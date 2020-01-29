@@ -1,4 +1,4 @@
-# Improved-Release-Radar
+# Better-Release-Radar
 This is a script which uses Spotipy API calls to show you new albums by all the artists you follow on Spotify, by date.
 
 What is the point of following artists on Spotify if it doesn't tell you when they release a new album every time? Why is there no way to see all the most recent albums in one place?
