@@ -6,7 +6,7 @@ What is the point of following artists on Spotify if it doesn't tell you when th
 This is an improvement on Spotify's own Release Radar which is a truncated playlist and which makes it easy to miss new releases by artists you follow.
 
 Example Output:
-![Image of Yaktocat](https://github.com/PaulMcInnis/Better-Release-Radar/blob/master/example.png)
+![Example](https://github.com/PaulMcInnis/Better-Release-Radar/blob/master/example.png)
 
 ###  Requirements
 This project requires at least `python 3.7`
