@@ -33,7 +33,7 @@ if __name__ == "__main__":
         print("Please set USERNAME to match your spotify username. You can find this by"
               " navigating to you user page on Spotify (click your name in top right), "
               " clicking the three dots -> share -> Copy Profile Link. It is the string"
-              " after 'http://open.spotify.com/user/'"
+              " after 'http://open.spotify.com/user/'")
         
     # We will retain a list of albums of these types
     allowed_groups = ['album']
