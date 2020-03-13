@@ -17,7 +17,7 @@ ENDC = '\033[0m'
 
 
 # Config items: TODO: move below into a config
-USERNAME = '358cfe6c7ce24c8e8914b43fa01e4746'
+USERNAME = None
 REDIRECT_URI = 'http://localhost:8888/callback' # TODO: host simpleHTTP on this? (vs. getting 404)
 REGION = 'CA'
 
@@ -28,7 +28,13 @@ if __name__ == "__main__":
                         required=False, default=MIN_DAYS_DEFAULT, type=int)
     parser.add_argument('--hide-eps', action='store_true', help='don\'t show any EPs')
     args = parser.parse_args(sys.argv[1:])
-
+    # Prompt user for username
+    if not USERNAME:
+        print("Please set USERNAME to match your spotify username. You can find this by"
+              " navigating to you user page on Spotify (click your name in top right), "
+              " clicking the three dots -> share -> Copy Profile Link. It is the string"
+              " after 'http://open.spotify.com/user/'"
+        
     # We will retain a list of albums of these types
     allowed_groups = ['album']
     if not args.hide_eps:
