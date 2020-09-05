@@ -1,68 +1,157 @@
-"""Scrape a list of new albums by artists I follow on Spotify"""
+"""Scrape a list of new albums by artists I follow on Spotify into a CLI table
+
+TODO: this is pretty wasteful on API calls, is there a better way?
+TODO: sometimes we can get duplicate albums with different URIS, filter out?
+NOTE: when setting up authentication, you should set the redirect URI to match
+    'http://localhost:8888/callback'
+"""
 import argparse
-from datetime import datetime, date
+import logging
 import os
 import pickle
 import sys
+from datetime import date, datetime
+
 import spotipy
 
-
 # Inits
-MIN_DAYS_DEFAULT = 182  # Look this far into the past by default
-PRINT_URL = False # if False will print URI (copy-pasteable into desktop app)
+DEFAULT_REGION = 'CA'
+MAX_AGE_DAYS_DEFAULT =  60
 HEADER = '\033[95m'
 BOLD = '\033[1m'
 GREEN = '\033[92m'
 ENDC = '\033[0m'
+USERNAME_ENV_VAR_NAME = 'SPOTIPY_CLIENT_ID'
+USERNAME_EXP_LENGTH = 32
+REDIRECT_URI = 'http://localhost:8888/callback'
+DEFAULT_LOG_FILE = os.path.join(os.path.dirname(__file__), 'log.log')
+CACHE_DIR = os.path.join(os.path.dirname(__file__), '.cache')
+TODAY_DATE = date.today()
+TODAY_PICKLE_FILE = os.path.join(
+    CACHE_DIR, f".followed_artists_{TODAY_DATE}.pkl",
+)
+DEFAULT_LOG_LEVEL_NAME = 'INFO'
+LOG_LEVEL_REGISTRY = {
+    'CRITICAL': logging.CRITICAL,
+    'FATAL': logging.FATAL,
+    'ERROR': logging.ERROR,
+    'WARNING': logging.WARNING,
+    'INFO': logging.INFO,
+    'DEBUG': logging.DEBUG,
+}
+DEFAULT_LOG_FORMAT = "[%(asctime)s] [%(levelname)s] Organizeify: %(message)s"
+SPOTIFY_ALBUM_URL_BASE = 'https://open.spotify.com/album/'
 
 
-# Config items: TODO: move below into a config
-USERNAME = None
-REDIRECT_URI = 'http://localhost:8888/callback' # TODO: host simpleHTTP on this? (vs. getting 404)
-REGION = 'CA'
+def get_logger(logger_name: str, level: int, file_path: str = DEFAULT_LOG_FILE,
+               message_format: str = DEFAULT_LOG_FORMAT) -> logging.Logger:
+    """Initialize and return a logger"""
+    logger = logging.getLogger(logger_name)
+    logger.setLevel(level)
+    formatter = logging.Formatter(message_format)
+    stdout_handler = logging.StreamHandler(sys.stdout)
+    stdout_handler.setFormatter(formatter)
+    logger.addHandler(stdout_handler)
+    file_handler = logging.FileHandler(file_path)
+    file_handler.setFormatter(formatter)
+    logger.addHandler(file_handler)
+    return logger
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Show releases by artists you follow on Spotify')
-    parser.add_argument('--num-days', help='# of days after which results are omitted',
-                        required=False, default=MIN_DAYS_DEFAULT, type=int)
-    parser.add_argument('--hide-eps', action='store_true', help='don\'t show any EPs')
+    parser = argparse.ArgumentParser(
+        description='Show albums released by artists you follow on Spotify.',
+    )
+    parser.add_argument(
+        '--max-age-days',
+        help='# of days after which results are omitted from results.',
+        required=False,
+        default=MAX_AGE_DAYS_DEFAULT,
+        type=int,
+    )
+    parser.add_argument(
+        '--hide-eps',
+        action='store_true',
+        help='don\'t show any EP\'s, only show full-length releases.',
+    )
+    parser.add_argument(
+        '--show-urls',
+        action='store_true',
+        help='Show full URLs with http:// vs Spotify URI\'s that you must '
+        'copy-paste into your search to locate. NOTE: unless you have a way of '
+        'opening the clicked-URLS in your terminal within Spotify, it is '
+        'generally easier to copy-paste the URI\'s into Spotify Desktop',
+    )
+    parser.add_argument(
+        '--log-file',
+        type=str,
+        help=f'path to logging file. Defaults to {DEFAULT_LOG_FILE}',
+    )
+    parser.add_argument(
+        '--log-level',
+        type=str,
+        default='INFO',
+        choices=list(LOG_LEVEL_REGISTRY.keys()),
+        help='Type of logging information shown on the terminal.',
+    )
+    parser.add_argument(
+        '--region',
+        type=str,
+        default=DEFAULT_REGION,
+        # choices=AVAILABLE_MARKETS, TODO: can do with iso3166 module
+        help='Region identifier so that we show only releases in your locale. '
+        'Must conform to ISO 3166-1 alpha-2 format. Defaults to '
+        f'\'{DEFAULT_REGION}\'',
+    )
     args = parser.parse_args(sys.argv[1:])
+
+    # Get logger
+    assert args.log_level in LOG_LEVEL_REGISTRY, "Unknown -log-level."
+    logger = get_logger(
+        'Better-Release-Radar', level=LOG_LEVEL_REGISTRY[args.log_level]
+    )
+    logger.info("Initializing...")
+
     # Prompt user for username
-    if not USERNAME:
+    username = os.environ['SPOTIPY_CLIENT_ID']
+    if not len(username) == USERNAME_EXP_LENGTH:
         raise ValueError(
-            "Please set USERNAME to match your spotify username. You can find this by"
-            " navigating to you user page on Spotify (click your name in top right), "
-            " clicking the three dots -> share -> Copy Profile Link. It is the string"
-            " after 'http://open.spotify.com/user/'"
+            "!!! Please export SPOTIPY_CLIENT_ID to match your Spotify username"
+            ". You can find this by navigating to you user page on Spotify "
+            "(click your name in top right), clicking the three dots -> "
+            "share -> Copy Profile Link. It is the string after "
+            "'http://open.spotify.com/user/'"
         )
-        
+
     # We will retain a list of albums of these types
     allowed_groups = ['album']
     if not args.hide_eps:
         allowed_groups.append('single')
 
-    # Cache file path
-    today = date.today()
-    today_pickle = 'artists{}.pkl'.format(str(today))
-
     # Authenticate + Init
     token = spotipy.util.prompt_for_user_token(
-        USERNAME, 'user-follow-read', redirect_uri=REDIRECT_URI)
+        username, 'user-follow-read', redirect_uri=REDIRECT_URI
+    )
     assert token, "Spotify login unsuccessful"
     sp = spotipy.Spotify(auth=token)
 
+    # Make folder
+    if not os.path.exists(CACHE_DIR):
+        os.makedirs(CACHE_DIR)
+
     # Load or scrape following data
-    if os.path.exists(today_pickle):
-        print("Loaded existing scrape data from " + today_pickle)
-        artists = pickle.load(open(today_pickle, 'rb'))
+    if os.path.exists(TODAY_PICKLE_FILE):
+        logger.info(f"Loaded existing scrape data from {TODAY_PICKLE_FILE}")
+        artists = pickle.load(open(TODAY_PICKLE_FILE, 'rb'))
     else:
-        print("Scraping user following data...")
+        logger.info("Scraping user following data...")
 
         # Get all the artists you are following
         artists = sp.current_user_followed_artists()['artists']['items']
         while True:
-            print("getting 20 followed artists... {}".format(artists[-1]['id']))
+            logger.info(
+                "Getting 20 followed artists... {}".format(artists[-1]['id'])
+            )
             new_artists = sp.current_user_followed_artists(
                 after=artists[-1]['id'])
             if (not new_artists or not new_artists['artists']
@@ -71,8 +160,10 @@ if __name__ == "__main__":
             artists.extend(new_artists['artists']['items'])
 
         # Get all the albums by every artist
+        # TODO: we may want to consider aborting getting 50 more albums
+        # if they are too old, but we wouldn't be saving many requests
         for art in artists:
-            print("getting albums for {}...".format(art['name']))
+            logger.info("Getting albums for {}...".format(art['name']))
             try:
                 new_albs = sp.artist_albums(art['id'], limit=50)['items']
             except:
@@ -83,9 +174,7 @@ if __name__ == "__main__":
             ]
 
         # Cache
-        pickle.dump(artists, open(today_pickle, 'wb'))
-
-    # TODO: similarity filter?
+        pickle.dump(artists, open(TODAY_PICKLE_FILE, 'wb'))
 
     # Apply filters
     pot_new_albums, names_seen = [], []
@@ -93,10 +182,11 @@ if __name__ == "__main__":
         for alb in art['albums']:
 
             # Region and ep vs album filter
-            if (REGION not in alb['available_markets'] or alb['album_group'] not in allowed_groups):
+            if (args.region not in alb['available_markets']
+                    or alb['album_group'] not in allowed_groups):
                 continue
 
-            # Date Filter
+            # Read album date
             if alb['release_date_precision'] == 'year':
                 alb_date = date(int(alb['release_date']), 1, 1)
 
@@ -106,10 +196,9 @@ if __name__ == "__main__":
             else:
                 alb_date = datetime.fromisoformat(alb['release_date']).date()
 
-            # TODO: seems like we can get duplicates here. should fix in API!
-            # NOTE: duplicates have different URIS so probably multiple releases for canada
+            # Date filter
             if alb['name'] not in names_seen and abs(
-                (today - alb_date).days < args.num_days):
+                (TODAY_DATE - alb_date).days < args.max_age_days):
                 alb['datetime'] = alb_date
                 pot_new_albums.append(alb)
                 names_seen.append(alb['name'])
@@ -120,26 +209,40 @@ if __name__ == "__main__":
     # Sort by most recent
     pot_new_albums.sort(key=lambda r: r['datetime'], reverse=True)
 
-    # Header
-    print("\nNew albums from followed artists within past {} days:\n\n"
-          "{}{:<6}   {:<10}   {:<53}   {:<25}   {:<40}\n"
-          "-------------------------------------------------------"
-          "-------------------------------------------------------"
-          "------------------------------{}".format(
-            args.num_days, HEADER, 'type', 'date', 'url', 'artist', 'name', ENDC))
+    # Print out header
+    logger.info("Done scrape.")
+    print(
+        "\nNew albums from followed artists within past {} days:\n\n"
+        "{}{:<6}   {:<10}   {:<53}   {:<25}   {:<40}\n"
+        "-------------------------------------------------------"
+        "-------------------------------------------------------"
+        "------------------------------{}".format(
+            args.max_age_days,
+            HEADER,
+            'type',
+            'date',
+            'url' if args.show_urls else 'uri',
+            'artist',
+            'name',
+            ENDC
+        )
+    )
 
-    # Print out
+    # Print out rows
     for alb in pot_new_albums:
-        if PRINT_URL:
-            alb['url'] = 'https://open.spotify.com/album/' + alb['uri'].split(':')[2]
+        if args.show_urls:
+            # make the full (clickable) URL form the (searchable) URI
+            alb['url'] = SPOTIFY_ALBUM_URL_BASE + alb['uri'].split(':')[2]
+
         if len(alb['name']) > 40:
+            # Truncate long names
             alb['name'] = alb['name'][:37] + '...'
 
         print("{}{:<6}   {:<10}   {:<53}   {:<25}   {:<40}{}".format(
             '' if alb['album_group'] == 'single' else BOLD + GREEN,
             alb['album_group'],
             alb['release_date'],
-            alb['url'] if PRINT_URL else alb['uri'],
+            alb['url'] if args.show_urls else alb['uri'],
             alb['artists'][0]['name'],
             alb['name'],
             '' if alb['album_group'] == 'single' else ENDC,
