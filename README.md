@@ -1,9 +1,7 @@
 # Better-Release-Radar
-This is a script which uses Spotipy API calls to show you new albums by all the artists you follow on Spotify, by date.
+This script makes it easy to see all the new album and EP releases by artists you follow on Spotify. 
 
-What is the point of following artists on Spotify if it doesn't tell you when they release a new album every time? Why is there no way to see all the most recent albums in one place?
-
-This is an improvement on Spotify's own Release Radar which is a truncated playlist and which makes it easy to miss new releases by artists you follow.
+No more fussing around looking through a `New Releases` playlist of only 30 songs with bad visibility, now you can look at everything in one neat table!
 
 Example Output:
 ![Example](https://github.com/PaulMcInnis/Better-Release-Radar/blob/master/example.png)
