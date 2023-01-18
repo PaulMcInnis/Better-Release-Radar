@@ -16,8 +16,10 @@ You will need to [setup authentication with Spotify](https://developer.spotify.c
   ```
   export SPOTIPY_CLIENT_ID='your-spotify-client-id'
   export SPOTIPY_CLIENT_SECRET='your-spotify-client-secret'
-  export SPOTIPY_REDIRECT_URI='your-app-redirect-url'
+  export SPOTIPY_REDIRECT_URI='http://localhost:8888/callback'
   ```
+  
+You can always access id & secret / rotate the secret here: [developer dashboard](https://developer.spotify.com/dashboard/).
 
 #### Python                
 Install python requirements via:
