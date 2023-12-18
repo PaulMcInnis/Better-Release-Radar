@@ -64,16 +64,16 @@ def get_logger(
     message_format: str = DEFAULT_LOG_FORMAT,
 ) -> logging.Logger:
     """Initialize and return a logger"""
-    logger = logging.getLogger(logger_name)
-    logger.setLevel(level)
+    _logger = logging.getLogger(logger_name)
+    _logger.setLevel(level)
     formatter = logging.Formatter(message_format)
     stdout_handler = logging.StreamHandler(sys.stdout)
     stdout_handler.setFormatter(formatter)
-    logger.addHandler(stdout_handler)
+    _logger.addHandler(stdout_handler)
     file_handler = logging.FileHandler(file_path)
     file_handler.setFormatter(formatter)
-    logger.addHandler(file_handler)
-    return logger
+    _logger.addHandler(file_handler)
+    return _logger
 
 
 if __name__ == "__main__":
@@ -162,7 +162,7 @@ if __name__ == "__main__":
 
     # Load or scrape following data
     if os.path.exists(TODAY_PICKLE_FILE):
-        logger.info(f"Loaded existing scrape data from {TODAY_PICKLE_FILE}")
+        logger.info("Loaded existing scrape data from %s", TODAY_PICKLE_FILE)
         artists = pickle.load(open(TODAY_PICKLE_FILE, "rb"))
     else:
         logger.info("Scraping user following data...")
@@ -170,7 +170,7 @@ if __name__ == "__main__":
         # Get all the artists you are following
         artists = sp.current_user_followed_artists()["artists"]["items"]
         while True:
-            logger.info("Getting 20 followed artists... {}".format(artists[-1]["id"]))
+            logger.info("Getting 20 followed artists... %s", artists[-1]["id"])
             new_artists = sp.current_user_followed_artists(after=artists[-1]["id"])
             if (
                 not new_artists
@@ -181,13 +181,12 @@ if __name__ == "__main__":
             artists.extend(new_artists["artists"]["items"])
 
         # Get all the albums by every artist
-        # TODO: we may want to consider aborting getting 50 more albums
         # if they are too old, but we wouldn't be saving many requests
         for art in artists:
-            logger.info("Getting albums for {}...".format(art["name"]))
+            logger.info("Getting albums for %s...", art["name"])
             try:
                 new_albs = sp.artist_albums(art["id"], limit=50)["items"]
-            except Exception as err:
+            except Exception as err:  # pylint: disable=broad-except
                 art["albums"] = {}
                 continue
             art["albums"] = [alb for alb in new_albs if alb["type"] == "album"]
@@ -233,7 +232,7 @@ if __name__ == "__main__":
     # Print out header
     logger.info("Done scrape.")
     print(
-        "\nNew albums from followed artists within past {} days:\n\n"
+        "\nNew albums from followed artists within past {} days:\n\n"  # pylint: disable=C0209
         "{}{:<6}   {:<10}   {:<53}   {:<25}   {:<40}\n"
         "-------------------------------------------------------"
         "-------------------------------------------------------"
@@ -260,7 +259,7 @@ if __name__ == "__main__":
             alb["name"] = alb["name"][:37] + "..."
 
         print(
-            "{}{:<6}   {:<10}   {:<53}   {:<25}   {:<40}{}".format(
+            "{}{:<6}   {:<10}   {:<53}   {:<25}   {:<40}{}".format(  # pylint: disable=C0209
                 "" if alb["album_group"] == "single" else BOLD + GREEN,
                 alb["album_group"],
                 alb["release_date"],
