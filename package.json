@@ -1,6 +1,6 @@
 {
   "name": "better-release-radar",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "type": "module",
   "scripts": {
     "start": "NODE_OPTIONS='--no-warnings --loader ts-node/esm' ts-node --esm better-release-radar.ts"
