@@ -1,4 +1,4 @@
-# Better-Release-Radar (TypeScript Version)
+# Better-Release-Radar
 
 This script makes it easy to see all the new album and EP releases by artists you follow on Spotify.
 
