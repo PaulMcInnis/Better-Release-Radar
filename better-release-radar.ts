@@ -131,14 +131,26 @@ async function exchangeAuthorizationCode(code: string) {
 
 // Step 5: Use refresh token to get a new access token (if needed)
 async function refreshAccessToken() {
+  console.log("Refreshing access token...");
   try {
+    const tokens = loadTokensFromCache(); // Load tokens before trying to refresh
+    if (!tokens || !tokens.refreshToken) {
+      throw new Error("Refresh token is missing from cache"); // Handle missing refresh token case
+    }
+
+    // Set the refresh token in the spotifyApi instance
+    spotifyApi.setRefreshToken(tokens.refreshToken);
+
+    // Attempt to refresh the access token using the refresh token
     const data = await spotifyApi.refreshAccessToken();
     const accessToken = data.body["access_token"];
+
+    // Update the spotifyApi instance with the new access token
     spotifyApi.setAccessToken(accessToken);
-    const tokens = loadTokensFromCache();
-    if (tokens) {
-      saveTokensToCache(accessToken, tokens.refreshToken); // Update access token in cache
-    }
+
+    // Save the new access token, but keep the same refresh token in the cache
+    saveTokensToCache(accessToken, tokens.refreshToken);
+
     console.log("Access token has been refreshed.");
   } catch (err) {
     console.error("Error refreshing access token", err);
