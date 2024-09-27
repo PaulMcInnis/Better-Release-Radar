@@ -374,11 +374,20 @@ async function fetchArtistAlbumsWithRetry(
 function isSimilarAlbum(
   albumName: string,
   seenNames: string[],
-  threshold = 80
+  threshold = 65
 ): boolean {
   for (const name of seenNames) {
     const similarity = fuzz.ratio(albumName, name);
     if (similarity >= threshold) {
+      logger.debug(
+        "Similar albums found:",
+        "cur",
+        albumName,
+        "prev",
+        name,
+        "amount",
+        similarity
+      );
       return true;
     }
   }
@@ -450,7 +459,6 @@ async function main() {
   overallProgressBar.start(artists.length, 0); // Total steps: number of artists
 
   const albums: Album[] = [];
-  const seenAlbumNames: string[] = [];
   const todayDate = new Date();
 
   for (const artist of artists) {
@@ -461,6 +469,14 @@ async function main() {
         albumCache
       );
 
+      // Sort albums by release date so it's oldest to newest
+      artistAlbums.sort(
+        (a, b) =>
+          new Date(a.release_date).getTime() -
+          new Date(b.release_date).getTime()
+      );
+      let seenAlbumNamesForArist: string[] = [];
+
       for (const album of artistAlbums) {
         const albumDate = new Date(album.release_date);
 
@@ -470,11 +486,10 @@ async function main() {
           (!options.region ||
             (album.available_markets &&
               album.available_markets.includes(options.region))) &&
-          (!options.hideEps || album.album_type === "album") &&
-          !isSimilarAlbum(album.name, seenAlbumNames)
+          (!options.hideEps || album.album_type === "album")
+          // && !isSimilarAlbum(album.name, seenAlbumNamesForArist)
+          // FIXME: this isn't a good approach. Better to just add a 'filter re-releases' option and do it with keywords
         ) {
-          seenAlbumNames.push(album.name); // Add album name to seen list
-
           const primaryArtist = album.artists[0]; // Use the first artist as the primary artist
 
           albums.push({
@@ -487,6 +502,7 @@ async function main() {
             type: album.album_type as "album" | "single" | "compilation", // Cast to known types
           });
         }
+        seenAlbumNamesForArist.push(album.name);
       }
 
       // Cache the albums for this artist
@@ -505,7 +521,7 @@ async function main() {
   overallProgressBar.stop();
 
   // Save the album cache to disk after successful fetching
-  fs.writeFileSync(albumCacheFile, JSON.stringify(albumCache, null, 2)); // Make sure this line is executed
+  fs.writeFileSync(albumCacheFile, JSON.stringify(albumCache, null, 2));
   logger.info(`Album cache saved successfully at ${albumCacheFile}`);
 
   // Sort albums by release date
