@@ -2,7 +2,7 @@
 
 This script makes it easy to see all the new album and EP releases by artists you follow on Spotify.
 
-No more fussing around looking through a `New Releases` playlist of only 30 songs with bad visibility—now you can look at everything in one neat table!
+No more fussing around with the `New Releases` playlist or faffing with a flakey notifications feature, now you can look at everything in one neat table!
 
 ### Example Output:
 
