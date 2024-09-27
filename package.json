@@ -9,6 +9,7 @@
     "@types/spotify-web-api-node": "^5.0.11",
     "axios": "^1.7.7",
     "chalk": "^5.3.0",
+    "cli-progress": "^3.12.0",
     "cli-table3": "^0.6.5",
     "commander": "^12.1.0",
     "fuzzball": "^2.1.2",

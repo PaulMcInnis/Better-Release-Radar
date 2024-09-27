@@ -8,6 +8,7 @@ import SpotifyWebApi from "spotify-web-api-node";
 import winston from "winston";
 import chalk from "chalk";
 import Table from "cli-table3";
+import cliProgress from "cli-progress";
 
 // TypeScript Interfaces for data structures
 interface Artist {
@@ -30,6 +31,7 @@ interface RawAlbum {
   id: string;
   album_type: "album" | "single" | "compilation";
   available_markets?: string[];
+  artists: string[]; // Array of artist names associated with the album
 }
 
 // CLI Argument Parsing
@@ -225,13 +227,44 @@ function deleteOldCacheFiles(directory: string, maxAgeDays: number = 30) {
   });
 }
 
+// Function to fetch followed artists with a progress bar
 async function fetchFollowedArtists(): Promise<Artist[]> {
+  let artists: Artist[] = [];
+  let after: string | undefined = undefined; // Start with undefined
+  const limit = 50; // Limit for each batch
+
   try {
-    const response = await spotifyApi.getFollowedArtists({ limit: 50 });
-    return response.body.artists.items.map((artist) => ({
-      id: artist.id,
-      name: artist.name,
-    }));
+    // First, get the total number of artists to set up the progress bar
+    const initialResponse = await spotifyApi.getFollowedArtists({ limit: 1 });
+    const totalArtists = initialResponse.body.artists.total || 0;
+    logger.info(`Total followed artists: ${totalArtists}`);
+    let response;
+    do {
+      // Fetch followed artists with the correct 'after' parameter
+      response = await spotifyApi.getFollowedArtists({ limit, after });
+
+      // Check if response is valid
+      if (
+        !response.body ||
+        !response.body.artists ||
+        !response.body.artists.items
+      ) {
+        throw new Error("Invalid response from Spotify API");
+      }
+
+      // Append fetched artists
+      artists = artists.concat(
+        response.body.artists.items.map((artist) => ({
+          id: artist.id,
+          name: artist.name,
+        }))
+      );
+
+      // Set the 'after' cursor for the next request
+      after = response.body.artists.cursors.after;
+    } while (after); // Continue until no more pages
+
+    return artists;
   } catch (err) {
     logger.error("Error fetching followed artists:", err);
     throw err;
@@ -239,9 +272,32 @@ async function fetchFollowedArtists(): Promise<Artist[]> {
 }
 
 async function fetchArtistAlbums(artistId: string): Promise<RawAlbum[]> {
+  let albums: RawAlbum[] = [];
+  let offset = 0;
+  const limit = 50; // Spotify API allows a maximum of 50 items per request
+
   try {
-    const response = await spotifyApi.getArtistAlbums(artistId, { limit: 50 });
-    return response.body.items;
+    let response;
+    do {
+      // Fetch albums in batches using the offset for pagination
+      response = await spotifyApi.getArtistAlbums(artistId, { limit, offset });
+      const fetchedAlbums = response.body.items
+        .filter((album) => album.artists[0].id === artistId) // Ensure the followed artist is the primary artist
+        .map((album) => ({
+          name: album.name,
+          release_date: album.release_date,
+          uri: album.uri,
+          id: album.id,
+          album_type: album.album_type,
+          available_markets: album.available_markets,
+          artists: album.artists.map((artist) => artist.name), // Extract artist names
+        }));
+
+      albums = albums.concat(fetchedAlbums); // Append the newly fetched albums to the result
+      offset += limit; // Move the offset for the next batch
+    } while (response.body.items.length === limit); // Continue while we still get a full batch of results
+
+    return albums;
   } catch (err) {
     logger.error(`Error fetching albums for artist ${artistId}`, err);
     throw err;
@@ -292,7 +348,7 @@ function displayAlbums(albums) {
   console.log(table.toString());
 }
 
-// Main function to fetch and display albums
+// Function to fetch albums for artists with overall progress
 async function main() {
   logger.info("Starting Better Release Radar...");
 
@@ -310,9 +366,20 @@ async function main() {
     logger.info("Fetched and cached followed artists");
   }
 
+  const totalSteps = artists.length * 5; // Estimate 5 albums per artist for progress tracking
+
+  // Initialize overall progress bar
+  const overallProgressBar = new cliProgress.SingleBar(
+    {},
+    cliProgress.Presets.shades_classic
+  );
+  overallProgressBar.start(totalSteps, 0); // Total steps: estimated albums
+
   const albums: Album[] = [];
   const seenAlbumNames: string[] = [];
   const todayDate = new Date();
+
+  logger.info("Fetching artists' albums");
 
   for (const artist of artists) {
     const artistAlbums = await fetchArtistAlbums(artist.id);
@@ -330,18 +397,27 @@ async function main() {
       ) {
         seenAlbumNames.push(album.name); // Add album name to seen list
 
+        // Use the first artist as the primary artist (you can adjust this logic if needed)
+        const primaryArtist = album.artists[0];
+
         albums.push({
           name: album.name,
           release_date: album.release_date,
           url: options.showUrls
             ? `${SPOTIFY_ALBUM_URL_BASE}${album.id}`
             : album.uri,
-          artist: artist.name,
+          artist: primaryArtist, // Set the correct primary artist
           type: album.album_type as "album" | "single" | "compilation", // Cast to known types
         });
+
+        // Update the overall progress bar for each album fetched
+        overallProgressBar.increment();
       }
     }
   }
+
+  // Stop the progress bar when complete
+  overallProgressBar.stop();
 
   // Sort albums by release date
   albums.sort(
