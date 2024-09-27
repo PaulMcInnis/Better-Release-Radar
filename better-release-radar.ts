@@ -1,6 +1,5 @@
 import * as fs from "fs";
 import * as path from "path";
-import * as fuzz from "fuzzball";
 import * as http from "http";
 import { fileURLToPath } from "url";
 import { Command } from "commander";
@@ -47,6 +46,7 @@ program
   .option("--log-file <path>", "Path to log file", "log.log")
   .option("--log-level <level>", "Logging level", "info")
   .option("--region <region>", "Region for album releases", "CA")
+  .option("--show-re-releases", "Show re-releases", false)
   .parse(process.argv);
 
 const options = program.opts();
@@ -82,6 +82,51 @@ const albumCacheFile = path.join(
 );
 
 const SPOTIFY_ALBUM_URL_BASE = "https://open.spotify.com/album/";
+
+// Define regular expressions to filter out re-releases
+const reReleasePatterns = [
+  /\bdeluxe\b/i,
+  /\bremaster(ed)?\b/i,
+  /\banniversary\b/i,
+  /\bspecial edition\b/i,
+  /\bexpanded\b/i,
+  /\breissue\b/i,
+  /\bbonus\b/i,
+  /\bedition\b/i,
+];
+
+// Function to normalize album names by removing re-release terms, text in parentheses/brackets, and normalizing dashes/colons
+function normalizeAlbumName(albumName: string): string {
+  // Remove terms in parentheses or brackets
+  let normalized = albumName
+    .replace(/\s*\(.*?\)\s*/g, "") // Remove text in parentheses
+    .replace(/\s*\[.*?\]\s*/g, "") // Remove text in brackets
+    .replace(/\s*-\s*/g, " ") // Normalize dashes to spaces
+    .replace(/\s*:\s*/g, " "); // Normalize colons to spaces
+
+  // Remove common re-release terms
+  normalized = reReleasePatterns.reduce(
+    (name, pattern) => name.replace(pattern, ""),
+    normalized
+  );
+
+  return normalized.trim();
+}
+
+// Function to check if an album name is a re-release
+function isReRelease(albumName: string): boolean {
+  return reReleasePatterns.some((pattern) => pattern.test(albumName));
+}
+
+// Function to check if an album with the same normalized name already exists
+function albumExists(albumName: string, existingAlbums: RawAlbum[]): boolean {
+  const normalizedAlbumName = normalizeAlbumName(albumName);
+  return existingAlbums.some(
+    (existingAlbum) =>
+      normalizeAlbumName(existingAlbum.name).toLowerCase() ===
+      normalizedAlbumName.toLowerCase()
+  );
+}
 
 // Set up Spotify API
 const spotifyApi = new SpotifyWebApi({
@@ -370,30 +415,6 @@ async function fetchArtistAlbumsWithRetry(
   }
 }
 
-/// Function to calculate fuzzy similarity between two album names
-function isSimilarAlbum(
-  albumName: string,
-  seenNames: string[],
-  threshold = 65
-): boolean {
-  for (const name of seenNames) {
-    const similarity = fuzz.ratio(albumName, name);
-    if (similarity >= threshold) {
-      logger.debug(
-        "Similar albums found:",
-        "cur",
-        albumName,
-        "prev",
-        name,
-        "amount",
-        similarity
-      );
-      return true;
-    }
-  }
-  return false;
-}
-
 // Function to display albums in a nice formatted table with colors
 function displayAlbums(albums) {
   // Creating a new table with headers
@@ -469,27 +490,31 @@ async function main() {
         albumCache
       );
 
-      // Sort albums by release date so it's oldest to newest
-      artistAlbums.sort(
-        (a, b) =>
-          new Date(a.release_date).getTime() -
-          new Date(b.release_date).getTime()
-      );
-      let seenAlbumNamesForArist: string[] = [];
-
       for (const album of artistAlbums) {
         const albumDate = new Date(album.release_date);
 
         if (
+          // Release date and release type filter
           daysBetween(todayDate, albumDate) <=
             parseInt(options.maxAgeDays, 10) &&
           (!options.region ||
             (album.available_markets &&
               album.available_markets.includes(options.region))) &&
           (!options.hideEps || album.album_type === "album")
-          // && !isSimilarAlbum(album.name, seenAlbumNamesForArist)
-          // FIXME: this isn't a good approach. Better to just add a 'filter re-releases' option and do it with keywords
         ) {
+          // Re-release detection filter
+          // Normalize the current album name and check if it already exists
+          if (options.showReReleases) {
+            if (albumExists(album.name, artistAlbums)) {
+              // If the album looks to have already been released on spotify, and it contains re-release terms, skip it
+              if (isReRelease(album.name)) {
+                logger.info(`Filtered out re-release: ${album.name}`);
+                continue;
+              }
+            }
+          }
+
+          // If no existing album is found, or this isn't a re-release, add the album
           const primaryArtist = album.artists[0]; // Use the first artist as the primary artist
 
           albums.push({
@@ -502,7 +527,6 @@ async function main() {
             type: album.album_type as "album" | "single" | "compilation", // Cast to known types
           });
         }
-        seenAlbumNamesForArist.push(album.name);
       }
 
       // Cache the albums for this artist
