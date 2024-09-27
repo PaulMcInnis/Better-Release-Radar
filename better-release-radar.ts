@@ -78,7 +78,7 @@ const artistCacheFile = path.join(
 );
 const albumCacheFile = path.join(
   cacheDir,
-  `followed_artists_${today.toISOString().split("T")[0]}.json`
+  `album_cache_${today.toISOString().split("T")[0]}.json`
 );
 
 const SPOTIFY_ALBUM_URL_BASE = "https://open.spotify.com/album/";
@@ -287,7 +287,7 @@ async function fetchArtistAlbums(
 ): Promise<RawAlbum[]> {
   if (cache[artistId]) {
     // Use cached albums if available
-    logger.info(`Using cached albums for artist ${artistId}`);
+    logger.debug(`Using cached albums for artist ${artistId}`);
     return cache[artistId];
   }
 
@@ -414,7 +414,7 @@ function displayAlbums(albums) {
   console.log(table.toString());
 }
 
-// Main function to fetch and display albums with access token refresh handling
+// Main function to fetch and display albums
 async function main() {
   logger.info("Starting Better Release Radar...");
 
@@ -438,23 +438,24 @@ async function main() {
   // Load cached albums if available
   if (fs.existsSync(albumCacheFile)) {
     albumCache = JSON.parse(fs.readFileSync(albumCacheFile, "utf8"));
+    logger.info(`Loaded albums from cache: ${albumCacheFile}`);
   }
 
   // Initialize the progress bar with the number of artists
   logger.info("Fetching artists' albums");
   const overallProgressBar = new cliProgress.SingleBar(
-    {
-      format: "{bar} {percentage}% | {value}/{total} artists processed",
-    },
+    {},
     cliProgress.Presets.shades_classic
   );
+  overallProgressBar.start(artists.length, 0); // Total steps: number of artists
+
   const albums: Album[] = [];
   const seenAlbumNames: string[] = [];
   const todayDate = new Date();
 
   for (const artist of artists) {
     try {
-      // Fetch albums for each artist with retry logic
+      // Fetch albums for each artist with retry logic (auth refresh + backoff)
       const artistAlbums = await fetchArtistAlbumsWithRetry(
         artist.id,
         albumCache
@@ -504,8 +505,8 @@ async function main() {
   overallProgressBar.stop();
 
   // Save the album cache to disk after successful fetching
-  fs.writeFileSync(albumCacheFile, JSON.stringify(albumCache, null, 2));
-  logger.info("Album cache saved successfully.");
+  fs.writeFileSync(albumCacheFile, JSON.stringify(albumCache, null, 2)); // Make sure this line is executed
+  logger.info(`Album cache saved successfully at ${albumCacheFile}`);
 
   // Sort albums by release date
   albums.sort(
