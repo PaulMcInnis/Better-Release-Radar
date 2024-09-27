@@ -72,10 +72,15 @@ const __dirname = path.dirname(__filename);
 const cacheDir = path.join(__dirname, ".cache");
 const tokenCacheFile = path.join(cacheDir, "spotify_tokens.json");
 const today = new Date();
-const todayCacheFile = path.join(
+const artistCacheFile = path.join(
   cacheDir,
   `followed_artists_${today.toISOString().split("T")[0]}.json`
 );
+const albumCacheFile = path.join(
+  cacheDir,
+  `followed_artists_${today.toISOString().split("T")[0]}.json`
+);
+
 const SPOTIFY_ALBUM_URL_BASE = "https://open.spotify.com/album/";
 
 // Set up Spotify API
@@ -226,6 +231,15 @@ function deleteOldCacheFiles(directory: string, maxAgeDays: number = 30) {
     }
   });
 }
+function loadAlbumCache(): { [artistId: string]: RawAlbum[] } {
+  if (fs.existsSync(albumCacheFile)) {
+    return JSON.parse(fs.readFileSync(albumCacheFile, "utf8"));
+  }
+  return {};
+}
+function saveAlbumCache(cache: { [artistId: string]: RawAlbum[] }) {
+  fs.writeFileSync(albumCacheFile, JSON.stringify(cache, null, 2));
+}
 
 // Function to fetch followed artists with a progress bar
 async function fetchFollowedArtists(): Promise<Artist[]> {
@@ -271,7 +285,17 @@ async function fetchFollowedArtists(): Promise<Artist[]> {
   }
 }
 
-async function fetchArtistAlbums(artistId: string): Promise<RawAlbum[]> {
+// Fetch artist albums with cache support
+async function fetchArtistAlbums(
+  artistId: string,
+  cache: { [artistId: string]: RawAlbum[] }
+): Promise<RawAlbum[]> {
+  if (cache[artistId]) {
+    // Use cached albums if available
+    logger.info(`Using cached albums for artist ${artistId}`);
+    return cache[artistId];
+  }
+
   let albums: RawAlbum[] = [];
   let offset = 0;
   const limit = 50; // Spotify API allows a maximum of 50 items per request
@@ -296,6 +320,10 @@ async function fetchArtistAlbums(artistId: string): Promise<RawAlbum[]> {
       albums = albums.concat(fetchedAlbums); // Append the newly fetched albums to the result
       offset += limit; // Move the offset for the next batch
     } while (response.body.items.length === limit); // Continue while we still get a full batch of results
+
+    // Cache the albums for this artist
+    cache[artistId] = albums;
+    saveAlbumCache(cache); // Save the updated cache to disk
 
     return albums;
   } catch (err) {
@@ -348,7 +376,7 @@ function displayAlbums(albums) {
   console.log(table.toString());
 }
 
-// Function to fetch albums for artists with overall progress
+// Main function to fetch and display albums
 async function main() {
   logger.info("Starting Better Release Radar...");
 
@@ -357,32 +385,37 @@ async function main() {
   deleteOldCacheFiles(cacheDir, 60);
 
   let artists: Artist[];
-  if (fs.existsSync(todayCacheFile)) {
-    artists = JSON.parse(fs.readFileSync(todayCacheFile, "utf8"));
-    logger.info(`Loaded artists from cache: ${todayCacheFile}`);
+  let albumCache = {};
+
+  // Load cached artists if available
+  if (fs.existsSync(artistCacheFile)) {
+    artists = JSON.parse(fs.readFileSync(artistCacheFile, "utf8"));
+    logger.info(`Loaded artists from cache: ${artistCacheFile}`);
   } else {
     artists = await fetchFollowedArtists();
-    fs.writeFileSync(todayCacheFile, JSON.stringify(artists));
+    fs.writeFileSync(artistCacheFile, JSON.stringify(artists));
     logger.info("Fetched and cached followed artists");
   }
 
-  const totalSteps = artists.length * 5; // Estimate 5 albums per artist for progress tracking
+  // Load cached albums if available
+  if (fs.existsSync(albumCacheFile)) {
+    albumCache = JSON.parse(fs.readFileSync(albumCacheFile, "utf8"));
+  }
 
-  // Initialize overall progress bar
+  // Initialize the progress bar with the number of artists
+  logger.info("Fetching artists' albums");
   const overallProgressBar = new cliProgress.SingleBar(
     {},
     cliProgress.Presets.shades_classic
   );
-  overallProgressBar.start(totalSteps, 0); // Total steps: estimated albums
+  overallProgressBar.start(artists.length, 0); // Total steps: number of artists
 
   const albums: Album[] = [];
   const seenAlbumNames: string[] = [];
   const todayDate = new Date();
 
-  logger.info("Fetching artists' albums");
-
   for (const artist of artists) {
-    const artistAlbums = await fetchArtistAlbums(artist.id);
+    const artistAlbums = await fetchArtistAlbums(artist.id, albumCache);
 
     for (const album of artistAlbums) {
       const albumDate = new Date(album.release_date);
@@ -397,8 +430,7 @@ async function main() {
       ) {
         seenAlbumNames.push(album.name); // Add album name to seen list
 
-        // Use the first artist as the primary artist (you can adjust this logic if needed)
-        const primaryArtist = album.artists[0];
+        const primaryArtist = album.artists[0]; // Use the first artist as the primary artist
 
         albums.push({
           name: album.name,
@@ -409,15 +441,22 @@ async function main() {
           artist: primaryArtist, // Set the correct primary artist
           type: album.album_type as "album" | "single" | "compilation", // Cast to known types
         });
-
-        // Update the overall progress bar for each album fetched
-        overallProgressBar.increment();
       }
     }
+
+    // Cache the albums for this artist
+    albumCache[artist.id] = artistAlbums;
+
+    // Increment the progress bar after processing each artist
+    overallProgressBar.increment();
   }
 
   // Stop the progress bar when complete
   overallProgressBar.stop();
+
+  // Save the album cache to disk after successful fetching
+  fs.writeFileSync(albumCacheFile, JSON.stringify(albumCache, null, 2));
+  logger.info("Album cache saved successfully.");
 
   // Sort albums by release date
   albums.sort(
