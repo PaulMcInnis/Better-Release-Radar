@@ -231,12 +231,7 @@ function deleteOldCacheFiles(directory: string, maxAgeDays: number = 30) {
     }
   });
 }
-function loadAlbumCache(): { [artistId: string]: RawAlbum[] } {
-  if (fs.existsSync(albumCacheFile)) {
-    return JSON.parse(fs.readFileSync(albumCacheFile, "utf8"));
-  }
-  return {};
-}
+
 function saveAlbumCache(cache: { [artistId: string]: RawAlbum[] }) {
   fs.writeFileSync(albumCacheFile, JSON.stringify(cache, null, 2));
 }
@@ -332,6 +327,49 @@ async function fetchArtistAlbums(
   }
 }
 
+// Retry mechanism with token refresh for auth issues and exponential backoff for other errors
+async function fetchArtistAlbumsWithRetry(
+  artistId: string,
+  cache: { [artistId: string]: RawAlbum[] }
+): Promise<RawAlbum[]> {
+  let retries = 3; // Max number of retries for non-auth errors
+  let backoffDelay = 500; // Initial backoff delay in milliseconds
+
+  while (retries > 0) {
+    try {
+      // Try fetching artist albums
+      return await fetchArtistAlbums(artistId, cache);
+    } catch (err) {
+      if (
+        err.body &&
+        err.body.error &&
+        err.body.error.status === 401 &&
+        err.body.error.message === "The access token expired"
+      ) {
+        // If it's an authentication issue (token expired), refresh the token and retry immediately
+        logger.info("Access token expired. Refreshing token...");
+        await refreshAccessToken(); // Refresh the access token
+        continue; // Retry immediately after refreshing token (no backoff needed)
+      } else {
+        // For non-authentication errors, apply exponential backoff
+        retries -= 1;
+        if (retries > 0) {
+          logger.info(
+            `Error occurred, retrying after ${
+              backoffDelay / 1000
+            } seconds... (${retries} retries left)`
+          );
+          await new Promise((resolve) => setTimeout(resolve, backoffDelay)); // Wait for backoff period
+          backoffDelay *= 2; // Exponential backoff (double the delay)
+        } else {
+          // If out of retries, rethrow the error
+          throw err;
+        }
+      }
+    }
+  }
+}
+
 /// Function to calculate fuzzy similarity between two album names
 function isSimilarAlbum(
   albumName: string,
@@ -376,7 +414,7 @@ function displayAlbums(albums) {
   console.log(table.toString());
 }
 
-// Main function to fetch and display albums
+// Main function to fetch and display albums with access token refresh handling
 async function main() {
   logger.info("Starting Better Release Radar...");
 
@@ -405,50 +443,61 @@ async function main() {
   // Initialize the progress bar with the number of artists
   logger.info("Fetching artists' albums");
   const overallProgressBar = new cliProgress.SingleBar(
-    {},
+    {
+      format: "{bar} {percentage}% | {value}/{total} artists processed",
+    },
     cliProgress.Presets.shades_classic
   );
-  overallProgressBar.start(artists.length, 0); // Total steps: number of artists
-
   const albums: Album[] = [];
   const seenAlbumNames: string[] = [];
   const todayDate = new Date();
 
   for (const artist of artists) {
-    const artistAlbums = await fetchArtistAlbums(artist.id, albumCache);
+    try {
+      // Fetch albums for each artist with retry logic
+      const artistAlbums = await fetchArtistAlbumsWithRetry(
+        artist.id,
+        albumCache
+      );
 
-    for (const album of artistAlbums) {
-      const albumDate = new Date(album.release_date);
+      for (const album of artistAlbums) {
+        const albumDate = new Date(album.release_date);
 
-      if (
-        daysBetween(todayDate, albumDate) <= parseInt(options.maxAgeDays, 10) &&
-        (!options.region ||
-          (album.available_markets &&
-            album.available_markets.includes(options.region))) &&
-        (!options.hideEps || album.album_type === "album") &&
-        !isSimilarAlbum(album.name, seenAlbumNames)
-      ) {
-        seenAlbumNames.push(album.name); // Add album name to seen list
+        if (
+          daysBetween(todayDate, albumDate) <=
+            parseInt(options.maxAgeDays, 10) &&
+          (!options.region ||
+            (album.available_markets &&
+              album.available_markets.includes(options.region))) &&
+          (!options.hideEps || album.album_type === "album") &&
+          !isSimilarAlbum(album.name, seenAlbumNames)
+        ) {
+          seenAlbumNames.push(album.name); // Add album name to seen list
 
-        const primaryArtist = album.artists[0]; // Use the first artist as the primary artist
+          const primaryArtist = album.artists[0]; // Use the first artist as the primary artist
 
-        albums.push({
-          name: album.name,
-          release_date: album.release_date,
-          url: options.showUrls
-            ? `${SPOTIFY_ALBUM_URL_BASE}${album.id}`
-            : album.uri,
-          artist: primaryArtist, // Set the correct primary artist
-          type: album.album_type as "album" | "single" | "compilation", // Cast to known types
-        });
+          albums.push({
+            name: album.name,
+            release_date: album.release_date,
+            url: options.showUrls
+              ? `${SPOTIFY_ALBUM_URL_BASE}${album.id}`
+              : album.uri,
+            artist: primaryArtist, // Set the correct primary artist
+            type: album.album_type as "album" | "single" | "compilation", // Cast to known types
+          });
+        }
       }
+
+      // Cache the albums for this artist
+      albumCache[artist.id] = artistAlbums;
+
+      // Increment the progress bar after processing each artist
+      overallProgressBar.increment();
+    } catch (err) {
+      logger.error(
+        `Error fetching albums for artist ${artist.id}: ${err.message}`
+      );
     }
-
-    // Cache the albums for this artist
-    albumCache[artist.id] = artistAlbums;
-
-    // Increment the progress bar after processing each artist
-    overallProgressBar.increment();
   }
 
   // Stop the progress bar when complete
