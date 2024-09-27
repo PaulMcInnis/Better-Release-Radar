@@ -47,6 +47,7 @@ program
   .option("--log-level <level>", "Logging level", "info")
   .option("--region <region>", "Region for album releases", "CA")
   .option("--show-re-releases", "Show re-releases", false)
+  .option("--show-live-recordings", "Show live recordings", false)
   .parse(process.argv);
 
 const options = program.opts();
@@ -118,6 +119,25 @@ function isReRelease(albumName: string): boolean {
   return reReleasePatterns.some((pattern) => pattern.test(albumName));
 }
 
+// List of patterns to detect live recordings but avoid "LIVE" as part of the title
+const liveRecordingPatterns = [
+  /\blive at\b/i, // "Live at [Location]"
+  /\bin concert\b/i, // "In Concert"
+  /\blive recording\b/i, // "Live Recording"
+  /\brecorded live\b/i, // "Recorded Live"
+  /\blive version\b/i, // "Live Version"
+  /\blive performance\b/i, // "Live Performance"
+  /\blive from\b/i, // "Live From [Location]"
+  /\blive in\b/i, // "Live In [Location]"
+  /\blive on\b/i, // "Live On [Date]"
+  /\bunplugged\b/i, // "Unplugged"
+];
+
+// Function to check if an album is a live recording (using patterns but ignoring simple titles like "Live")
+function isLiveRecording(albumName: string): boolean {
+  return liveRecordingPatterns.some((pattern) => pattern.test(albumName));
+}
+
 // Function to check if an album with the same normalized name already exists
 function albumExists(albumName: string, existingAlbums: RawAlbum[]): boolean {
   const normalizedAlbumName = normalizeAlbumName(albumName);
@@ -141,7 +161,7 @@ function getAuthorizationURL() {
     ["user-follow-read"],
     "random-state"
   );
-  console.log(`Authorize your app by visiting this URL: ${authorizeURL}`);
+  logger.info(`Authorize your app by visiting this URL: ${authorizeURL}`);
 }
 
 // Step 2: Save Tokens to Cache
@@ -175,7 +195,7 @@ async function exchangeAuthorizationCode(code: string) {
     spotifyApi.setAccessToken(access_token);
     spotifyApi.setRefreshToken(refresh_token);
     saveTokensToCache(access_token, refresh_token);
-    console.log("Access token and refresh token set.");
+    logger.info("Access token and refresh token set.");
   } catch (err) {
     console.error("Error exchanging authorization code:", err);
   }
@@ -183,7 +203,7 @@ async function exchangeAuthorizationCode(code: string) {
 
 // Step 5: Use refresh token to get a new access token (if needed)
 async function refreshAccessToken() {
-  console.log("Refreshing access token...");
+  logger.info("Refreshing access token...");
   try {
     const tokens = loadTokensFromCache(); // Load tokens before trying to refresh
     if (!tokens || !tokens.refreshToken) {
@@ -203,7 +223,7 @@ async function refreshAccessToken() {
     // Save the new access token, but keep the same refresh token in the cache
     saveTokensToCache(accessToken, tokens.refreshToken);
 
-    console.log("Access token has been refreshed.");
+    logger.info("Access token has been refreshed.");
   } catch (err) {
     console.error("Error refreshing access token", err);
   }
@@ -216,7 +236,7 @@ async function authenticateSpotify() {
   if (tokens && tokens.expiresAt > Date.now()) {
     spotifyApi.setAccessToken(tokens.accessToken);
     spotifyApi.setRefreshToken(tokens.refreshToken);
-    console.log("Using cached Spotify tokens.");
+    logger.info("Using cached Spotify tokens.");
   } else if (tokens && tokens.refreshToken) {
     await refreshAccessToken(); // Use refresh token if access token expired
   } else {
@@ -233,7 +253,7 @@ function startLocalServer() {
       const code = url.searchParams.get("code");
 
       if (code) {
-        console.log("Authorization code received:", code);
+        logger.info("Authorization code received:", code);
         await exchangeAuthorizationCode(code);
 
         res.writeHead(200, { "Content-Type": "text/plain" });
@@ -249,7 +269,7 @@ function startLocalServer() {
   });
 
   server.listen(8888, () => {
-    console.log(
+    logger.info(
       "Listening for Spotify authorization code on http://localhost:8888/callback"
     );
   });
@@ -466,9 +486,11 @@ async function main() {
   }
 
   // Load cached albums if available
+  let isAlbumCacheLoaded = false;
   if (fs.existsSync(albumCacheFile)) {
     albumCache = JSON.parse(fs.readFileSync(albumCacheFile, "utf8"));
     logger.info(`Loaded albums from cache: ${albumCacheFile}`);
+    isAlbumCacheLoaded = true;
   }
 
   // Initialize the progress bar with the number of artists
@@ -502,15 +524,19 @@ async function main() {
               album.available_markets.includes(options.region))) &&
           (!options.hideEps || album.album_type === "album")
         ) {
+          // Live recording filter
+          if (!options.showLiveRecordings && isLiveRecording(album.name)) {
+            logger.info(`Filtered out live recording: ${album.name}`);
+            continue;
+          }
+
           // Re-release detection filter
           // Normalize the current album name and check if it already exists
-          if (options.showReReleases) {
-            if (albumExists(album.name, artistAlbums)) {
-              // If the album looks to have already been released on spotify, and it contains re-release terms, skip it
-              if (isReRelease(album.name)) {
-                logger.info(`Filtered out re-release: ${album.name}`);
-                continue;
-              }
+          if (options.showReReleases && albumExists(album.name, artistAlbums)) {
+            // If the album looks to have already been released on spotify, and it contains re-release terms, skip it
+            if (isReRelease(album.name)) {
+              logger.info(`Filtered out re-release: ${album.name}`);
+              continue;
             }
           }
 
@@ -545,8 +571,10 @@ async function main() {
   overallProgressBar.stop();
 
   // Save the album cache to disk after successful fetching
-  fs.writeFileSync(albumCacheFile, JSON.stringify(albumCache, null, 2));
-  logger.info(`Album cache saved successfully at ${albumCacheFile}`);
+  if (!isAlbumCacheLoaded) {
+    fs.writeFileSync(albumCacheFile, JSON.stringify(albumCache, null, 2));
+    logger.info(`Album cache saved successfully at ${albumCacheFile}`);
+  }
 
   // Sort albums by release date
   albums.sort(
