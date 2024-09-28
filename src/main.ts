@@ -2,85 +2,24 @@ import * as fs from "fs";
 import * as path from "path";
 import * as http from "http";
 import { fileURLToPath } from "url";
-import { Command } from "commander";
 import SpotifyWebApi from "spotify-web-api-node";
-import winston from "winston";
-import chalk from "chalk";
+
 import Table from "cli-table3";
 import cliProgress from "cli-progress";
 
-// TypeScript Interfaces for data structures
-interface Artist {
-  id: string;
-  name: string;
-}
+import { Artist, RawAlbum, Album } from "./interfaces";
+import { logger } from "./logger";
 
-interface Album {
-  name: string;
-  release_date: string;
-  url: string;
-  artist: string;
-  type: "album" | "single" | "compilation";
-}
-
-interface RawAlbum {
-  name: string;
-  release_date: string;
-  uri: string;
-  id: string;
-  album_type: "album" | "single" | "compilation";
-  available_markets?: string[];
-  artists: string[]; // Array of artist names associated with the album
-}
-
-// CLI Argument Parsing
-const program = new Command();
-program
-  .option(
-    "--max-age-days <number>",
-    "Maximum age of albums to display in days",
-    "60"
-  )
-  .option("--hide-eps", "Hide EPs, only show full-length releases", false)
-  .option("--show-urls", "Show full URLs instead of Spotify URIs", false)
-  .option("--log-file <path>", "Path to log file", "log.log")
-  .option("--log-level <level>", "Logging level", "info")
-  .option("--region <region>", "Region for album releases", "CA")
-  .option("--show-re-releases", "Show re-releases", false)
-  .option("--show-live-recordings", "Show live recordings", false)
-  .parse(process.argv);
-
-const options = program.opts();
-
-// Logging Setup with Winston
-const logger = winston.createLogger({
-  level: options.logLevel,
-  format: winston.format.combine(
-    winston.format.timestamp(),
-    winston.format.printf(({ timestamp, level, message }) => {
-      return `[${timestamp}] [${level.toUpperCase()}]: ${message}`;
-    })
-  ),
-  transports: [
-    new winston.transports.Console(),
-    new winston.transports.File({ filename: options.logFile }),
-  ],
-});
-
-// Constants for the script
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const cacheDir = path.join(__dirname, ".cache");
-const tokenCacheFile = path.join(cacheDir, "spotify_tokens.json");
-const today = new Date();
-const artistCacheFile = path.join(
+import { options } from "./cli";
+import {
+  deleteOldCacheFiles,
+  loadTokensFromCache,
+  saveTokensToCache,
+  saveAlbumCache,
   cacheDir,
-  `followed_artists_${today.toISOString().split("T")[0]}.json`
-);
-const albumCacheFile = path.join(
-  cacheDir,
-  `album_cache_${today.toISOString().split("T")[0]}.json`
-);
+  artistCacheFile,
+  albumCacheFile,
+} from "./cache";
 
 const SPOTIFY_ALBUM_URL_BASE = "https://open.spotify.com/album/";
 
@@ -162,29 +101,6 @@ function getAuthorizationURL() {
     "random-state"
   );
   logger.info(`Authorize your app by visiting this URL: ${authorizeURL}`);
-}
-
-// Step 2: Save Tokens to Cache
-function saveTokensToCache(accessToken: string, refreshToken: string) {
-  const tokens = {
-    accessToken,
-    refreshToken,
-    expiresAt: Date.now() + 3600 * 1000, // Set expiry for 1 hour (you can always refresh)
-  };
-  fs.writeFileSync(tokenCacheFile, JSON.stringify(tokens));
-}
-
-// Step 3: Load Tokens from Cache
-function loadTokensFromCache(): {
-  accessToken: string;
-  refreshToken: string;
-  expiresAt: number;
-} | null {
-  if (fs.existsSync(tokenCacheFile)) {
-    const tokens = JSON.parse(fs.readFileSync(tokenCacheFile, "utf8"));
-    return tokens;
-  }
-  return null;
 }
 
 // Step 4: Exchange Authorization Code for Access Token and Refresh Token
@@ -275,31 +191,9 @@ function startLocalServer() {
   });
 }
 
-// Ensure that the cache directory exists
-if (!fs.existsSync(cacheDir)) {
-  fs.mkdirSync(cacheDir);
-}
-
 // Utility Functions
 const daysBetween = (date1: Date, date2: Date) =>
   Math.abs((+date1 - +date2) / (1000 * 60 * 60 * 24));
-
-function deleteOldCacheFiles(directory: string, maxAgeDays: number = 30) {
-  const now = Date.now();
-  fs.readdirSync(directory).forEach((file) => {
-    const filePath = path.join(directory, file);
-    const stats = fs.statSync(filePath);
-    const fileAgeDays = (now - stats.mtimeMs) / (1000 * 60 * 60 * 24);
-    if (fileAgeDays > maxAgeDays) {
-      fs.unlinkSync(filePath);
-      logger.info(`Deleted old cache file: ${file}`);
-    }
-  });
-}
-
-function saveAlbumCache(cache: { [artistId: string]: RawAlbum[] }) {
-  fs.writeFileSync(albumCacheFile, JSON.stringify(cache, null, 2));
-}
 
 // Function to fetch followed artists with a progress bar
 async function fetchFollowedArtists(): Promise<Artist[]> {
@@ -436,7 +330,8 @@ async function fetchArtistAlbumsWithRetry(
 }
 
 // Function to display albums in a nice formatted table with colors
-function displayAlbums(albums) {
+async function displayAlbums(albums) {
+  const { default: chalk } = await import("chalk");
   // Creating a new table with headers
   const table = new Table({
     head: [
@@ -468,12 +363,17 @@ function displayAlbums(albums) {
 async function main() {
   logger.info("Starting Better Release Radar...");
 
-  await authenticateSpotify(); // Ensure authentication is handled
+  await authenticateSpotify();
 
-  deleteOldCacheFiles(cacheDir, 60);
+  deleteOldCacheFiles();
 
   let artists: Artist[];
   let albumCache = {};
+
+  // Ensure that the cache directory exists
+  if (!fs.existsSync(cacheDir)) {
+    fs.mkdirSync(cacheDir);
+  }
 
   // Load cached artists if available
   if (fs.existsSync(artistCacheFile)) {
@@ -583,7 +483,7 @@ async function main() {
   );
 
   // Output the albums in a nice table format
-  displayAlbums(albums);
+  await displayAlbums(albums);
 }
 
 main().catch((err) => {
