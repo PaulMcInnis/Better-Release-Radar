@@ -11,7 +11,13 @@ import {
 import { options } from "./cli";
 import { displayAlbums } from "./display";
 import { fetchArtistAlbumsWithRetry, fetchFollowedArtists } from "./fetch";
-import { albumExists, isLiveRecording, isReRelease } from "./filters";
+import {
+  isLiveRecording,
+  isRemix,
+  isReRelease,
+  isSoundtrack,
+  normalizeAlbumName,
+} from "./filters";
 import { Album, Artist } from "./interfaces";
 import { logger } from "./logger";
 
@@ -93,22 +99,43 @@ export async function scrape() {
               album.available_markets.includes(options.region))) &&
           (!options.hideEps || album.album_type === "album")
         ) {
+          // NOTE: these can be a bit too aggressive, but we do show the albums we are filtering, and we do provide flags.
+          const normalizedAlbumName = normalizeAlbumName(album.name);
+          const filteredAlbumString = `${album.artists[0]} - ${album.name} - ${album.uri}`;
+
           // Live recording filter
-          if (!options.showLiveRecordings && isLiveRecording(album.name)) {
+          if (
+            !options.showLiveRecordings &&
+            isLiveRecording(normalizedAlbumName)
+          ) {
             filteredLogsBuffer.push(
-              `Filtered out live recording: ${album.name}`
+              "Filtered out live album: " + filteredAlbumString
             );
             continue;
           }
 
           // Re-release detection filter
-          // Normalize the current album name and check if it already exists
-          if (options.showReReleases && albumExists(album.name, artistAlbums)) {
-            // If the album looks to have already been released on spotify, and it contains re-release terms, skip it
-            if (isReRelease(album.name)) {
-              filteredLogsBuffer.push(`Filtered out re-release: ${album.name}`);
-              continue;
-            }
+          if (!options.showReReleases && isReRelease(normalizedAlbumName)) {
+            filteredLogsBuffer.push(
+              "Filtered out re-release: " + filteredAlbumString
+            );
+            continue;
+          }
+
+          // Soundtracks
+          if (!options.showSoundtracks && isSoundtrack(normalizedAlbumName)) {
+            filteredLogsBuffer.push(
+              "Filtered out soundtrack: " + filteredAlbumString
+            );
+            continue;
+          }
+
+          // Remixes
+          if (!options.showRemixes && isRemix(normalizedAlbumName)) {
+            filteredLogsBuffer.push(
+              "Filtered out remix: " + filteredAlbumString
+            );
+            continue;
           }
 
           // If no existing album is found, or this isn't a re-release, add the album
@@ -142,7 +169,9 @@ export async function scrape() {
   overallProgressBar.stop();
 
   // Log any filtered albums
-  filteredLogsBuffer.forEach((log) => logger.info(log));
+  if (options.logFiltered && filteredLogsBuffer.length > 0) {
+    filteredLogsBuffer.forEach((log) => logger.info(log));
+  }
 
   // Save the album cache to disk after successful fetching
   if (!isAlbumCacheLoaded) {

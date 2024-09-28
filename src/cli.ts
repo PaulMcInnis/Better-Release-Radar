@@ -14,6 +14,9 @@ program
   .option("--region <region>", "Region for album releases", "CA")
   .option("--show-re-releases", "Show re-releases", false)
   .option("--show-live-recordings", "Show live recordings", false)
+  .option("--show-soundtracks", "Show soundtracks", false)
+  .option("--show-remixes", "Show remixes", false)
+  .option("--log-filtered", "Log filtered albums", false)
   .parse(process.argv);
 
 export const options = program.opts();
