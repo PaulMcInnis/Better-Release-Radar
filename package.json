@@ -1,6 +1,6 @@
 {
   "name": "better-release-radar",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "type": "commonjs",
   "scripts": {
     "start": "NODE_OPTIONS='--no-warnings' ts-node ./src/main.ts"
