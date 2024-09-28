@@ -53,12 +53,17 @@ To run the script, simply use the following command:
     usage: npm start [-- <options>]
 
     Options:
-      --max-age-days MAX_AGE_DAYS   Maximum number of days to consider for new releases (default: 60)
-      --hide-eps                    Hide EPs, only show full-length releases
-      --show-urls                   Show full URLs instead of Spotify URIs
-      --log-file LOG_FILE           Path to log file (default: log.log)
-      --log-level LOG_LEVEL         Logging level (default: info)
-      --region REGION               ISO 3166-1 alpha-2 region code to filter albums by availability (default: CA)
+      --max-age-days <number>       Maximum number of days to consider for new releases (default: 60)
+      --show-urls                   Show full URLs instead of Spotify URIs (default: false)
+      --log-file <path>             Path to log file (default: log.log)
+      --log-level <level>           Logging level (default: info)
+      --region <region>             ISO 3166-1 alpha-2 region code to filter albums by availability (default: CA)
+      --hide-eps                    Hide EPs, and Singles, and only show full-length releases (default: false)
+      --hide-re-releases            Hide re-releases (default: false)
+      --hide-live-recordings        Hide live recordings (default: false)
+      --hide-soundtracks            Hide soundtracks (default: false)
+      --hide-remixes                Hide remixes (default: false)
+      --log-filtered                Log filtered albums (default: false)
 
 ### Example Usage:
 
