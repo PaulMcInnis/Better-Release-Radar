@@ -105,7 +105,7 @@ export async function scrape() {
 
           // Live recording filter
           if (
-            !options.showLiveRecordings &&
+            options.showLiveRecordings &&
             isLiveRecording(normalizedAlbumName)
           ) {
             filteredLogsBuffer.push(
@@ -115,7 +115,7 @@ export async function scrape() {
           }
 
           // Re-release detection filter
-          if (!options.showReReleases && isReRelease(normalizedAlbumName)) {
+          if (options.showReReleases && isReRelease(normalizedAlbumName)) {
             filteredLogsBuffer.push(
               "Filtered out re-release: " + filteredAlbumString
             );
@@ -123,7 +123,7 @@ export async function scrape() {
           }
 
           // Soundtracks
-          if (!options.showSoundtracks && isSoundtrack(normalizedAlbumName)) {
+          if (options.showSoundtracks && isSoundtrack(normalizedAlbumName)) {
             filteredLogsBuffer.push(
               "Filtered out soundtrack: " + filteredAlbumString
             );
@@ -131,7 +131,7 @@ export async function scrape() {
           }
 
           // Remixes
-          if (!options.showRemixes && isRemix(normalizedAlbumName)) {
+          if (options.showRemixes && isRemix(normalizedAlbumName)) {
             filteredLogsBuffer.push(
               "Filtered out remix: " + filteredAlbumString
             );

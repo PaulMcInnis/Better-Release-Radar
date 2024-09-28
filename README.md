@@ -66,6 +66,10 @@ To run the script, simply use the following command:
 
 This will show full album releases from the last 90 days, displaying the full URLs for albums available in the US region.
 
+    npm start -- --max-age-days 360 --hide-re-releases --hide-live-recordings --hide-soundtracks --hide-remixes
+
+This will show full album releases from the last year, filtering out re-releases, live recordings, soundtracks, and remixes using regex matching techniques.
+
 **NOTE: cmd+click in OSX will open the URL, but this is going to use spotify web, so fastest UX is to copy-paste the URI into spotify**
 
 ### Features:

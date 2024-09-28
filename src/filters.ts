@@ -10,6 +10,9 @@ const reReleasePatterns = [
   /\breissue\b/i,
   /\bbonus\b/i,
   /\bedition\b/i, // Catch any remaining cases where "edition" is used
+  /\balternative\s*master\b/i,
+  /\bdefinitive\b/i,
+  /\bdemos\b/i,
 ];
 
 export function normalizeAlbumName(albumName: string): string {
