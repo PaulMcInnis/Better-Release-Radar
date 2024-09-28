@@ -9,7 +9,13 @@ function getAuthorizationURL() {
     ["user-follow-read"],
     "random-state"
   );
-  logger.info(`Authorize your app by visiting this URL: ${authorizeURL}`);
+  logger.info("Prompting user to authorize the app");
+  console.log(`
+  --------------------------------------------------
+  Authorize your app by visiting this URL:
+  ${authorizeURL}
+  --------------------------------------------------
+  `);
 }
 
 // Step 4: Exchange Authorization Code for Access Token and Refresh Token
@@ -75,6 +81,7 @@ export async function authenticateSpotify(): Promise<boolean> {
   }
 }
 
+// By running a local server to receive the authorization code, we can automate the process of getting the code from the user.
 function startLocalServer() {
   const server = http.createServer(async (req, res) => {
     if (req.url && req.url.startsWith("/callback")) {
