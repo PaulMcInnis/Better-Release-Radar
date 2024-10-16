@@ -7,6 +7,7 @@ import {
   artistCacheFile,
   cacheDir,
   deleteOldCacheFiles,
+  ensureCacheDirectoryExists,
 } from "./cache";
 import { options } from "./cli";
 import { displayAlbums } from "./display";
@@ -35,6 +36,7 @@ const daysBetween = (date1: Date, date2: Date) =>
 // Main function to fetch and display albums
 export async function scrape() {
   logger.info("Starting Better Release Radar...");
+  ensureCacheDirectoryExists();
 
   await authenticateSpotify();
 
