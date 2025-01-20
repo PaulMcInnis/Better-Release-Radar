@@ -1,5 +1,5 @@
 import Table from "cli-table3";
-const chalk = require("chalk"); // Import chalk with CommonJS
+import chalk from "chalk";
 
 // Function to display albums in a nice formatted table with colors
 export function displayAlbums(albums) {

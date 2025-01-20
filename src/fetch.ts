@@ -1,8 +1,8 @@
-import { refreshAccessToken } from "./auth";
-import { saveAlbumCache } from "./cache";
-import { Artist, RawAlbum } from "./interfaces";
-import { logger } from "./logger";
-import { spotifyApi } from "./main";
+import { refreshAccessToken } from "./auth.ts";
+import { saveAlbumCache } from "./cache.ts";
+import type { Artist, RawAlbum } from "./interfaces.ts";
+import { logger } from "./logger.ts";
+import { spotifyApi } from "./main.ts";
 
 // Function to fetch followed artists with a progress bar
 export async function fetchFollowedArtists(): Promise<Artist[]> {

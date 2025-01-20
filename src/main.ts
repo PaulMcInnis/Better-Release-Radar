@@ -1,26 +1,26 @@
 import cliProgress from "cli-progress";
 import * as fs from "fs";
 import SpotifyWebApi from "spotify-web-api-node";
-import { authenticateSpotify } from "./auth";
+import { authenticateSpotify } from "./auth.ts";
 import {
   albumCacheFile,
   artistCacheFile,
   cacheDir,
   deleteOldCacheFiles,
   ensureCacheDirectoryExists,
-} from "./cache";
-import { options } from "./cli";
-import { displayAlbums } from "./display";
-import { fetchArtistAlbumsWithRetry, fetchFollowedArtists } from "./fetch";
+} from "./cache.ts";
+import { options } from "./cli.ts";
+import { displayAlbums } from "./display.ts";
+import { fetchArtistAlbumsWithRetry, fetchFollowedArtists } from "./fetch.ts";
 import {
   isLiveRecording,
   isRemix,
   isReRelease,
   isSoundtrack,
   normalizeAlbumName,
-} from "./filters";
-import { Album, Artist } from "./interfaces";
-import { logger } from "./logger";
+} from "./filters.ts";
+import { type Album, type Artist } from "./interfaces.ts";
+import { logger } from "./logger.ts";
 
 // Set up Spotify API
 const SPOTIFY_ALBUM_URL_BASE = "https://open.spotify.com/album/";

@@ -1,7 +1,12 @@
 // Dead-simple caching for Spotify API requests to make it easier to experiment with data without hitting API rate limits.
 import * as fs from "fs";
 import * as path from "path";
-import { logger } from "./logger";
+import { logger } from "./logger.ts";
+import { fileURLToPath } from "url";
+
+// Use import.meta.url to determine the current directory
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const today = new Date();
 export const cacheDir = path.resolve(__dirname, "../.cache");

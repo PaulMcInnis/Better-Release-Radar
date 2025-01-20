@@ -1,7 +1,7 @@
-import { logger } from "./logger";
+import { logger } from "./logger.ts";
 import http from "http";
-import { saveTokensToCache, loadTokensFromCache } from "./cache";
-import { scrape, spotifyApi } from "./main";
+import { saveTokensToCache, loadTokensFromCache } from "./cache.ts";
+import { scrape, spotifyApi } from "./main.ts";
 
 // Step 1: Generate an Authorization URL
 function getAuthorizationURL() {
