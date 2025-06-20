@@ -43,7 +43,7 @@ export async function scrape() {
   deleteOldCacheFiles();
 
   let artists: Artist[];
-  let albumCache = {};
+  let albumCache: Record<string, any> = {};
 
   // Ensure that the cache directory exists
   if (!fs.existsSync(cacheDir)) {
@@ -79,7 +79,7 @@ export async function scrape() {
 
   const albums: Album[] = [];
   const todayDate = new Date();
-  let filteredLogsBuffer = [];
+  let filteredLogsBuffer: string[] = [];
 
   // Process artists in parallel batches to improve performance
   const BATCH_SIZE = 10; // Process 10 artists concurrently
@@ -156,7 +156,7 @@ export async function scrape() {
             url: options.showUrls
               ? `${SPOTIFY_ALBUM_URL_BASE}${album.id}`
               : album.uri,
-            artist: primaryArtist, // Set the correct primary artist
+            artist: primaryArtist ?? "Unknown Artist", // Provide fallback for undefined
             type: album.album_type as "album" | "single" | "compilation", // Cast to known types
           });
         }
@@ -168,7 +168,7 @@ export async function scrape() {
       return artistResults;
     } catch (err) {
       logger.error(
-        `Error fetching albums for artist ${artist.id}: ${err.message}`
+        `Error fetching albums for artist ${artist.id}: ${err instanceof Error ? err.message : String(err)}`
       );
       return [];
     }
@@ -191,7 +191,7 @@ export async function scrape() {
 
   // Log any filtered albums
   if (options.logFiltered && filteredLogsBuffer.length > 0) {
-    filteredLogsBuffer.forEach((log) => logger.info(log));
+    filteredLogsBuffer.forEach((log: string) => logger.info(log));
   }
 
   // Save the album cache to disk after successful fetching

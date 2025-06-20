@@ -1,8 +1,9 @@
 import Table from "cli-table3";
 import chalk from "chalk";
+import type { Album } from "./interfaces.ts";
 
 // Function to display albums in a nice formatted table with colors
-export function displayAlbums(albums) {
+export function displayAlbums(albums: Album[]) {
   // Creating a new table with headers
   const table = new Table({
     head: [
@@ -16,7 +17,7 @@ export function displayAlbums(albums) {
   });
 
   // Adding each album to the table
-  albums.forEach((album) => {
+  albums.forEach((album: Album) => {
     table.push([
       chalk.green(album.type), // Make album type green
       chalk.yellow(album.release_date), // Date in yellow
