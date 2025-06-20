@@ -69,7 +69,7 @@ export async function fetchArtistAlbums(
       // Fetch albums in batches using the offset for pagination
       response = await spotifyApi.getArtistAlbums(artistId, { limit, offset });
       const fetchedAlbums = response.body.items
-        .filter((album) => album.artists[0].id === artistId) // Ensure the followed artist is the primary artist
+        .filter((album) => album.artists[0]?.id === artistId) // Ensure the followed artist is the primary artist
         .map((album) => ({
           name: album.name,
           release_date: album.release_date,
@@ -107,7 +107,7 @@ export async function fetchArtistAlbumsWithRetry(
     try {
       // Try fetching artist albums
       return await fetchArtistAlbums(artistId, cache);
-    } catch (err) {
+    } catch (err: any) {
       if (
         err.body &&
         err.body.error &&
@@ -136,4 +136,7 @@ export async function fetchArtistAlbumsWithRetry(
       }
     }
   }
+  
+  // This should never be reached, but TypeScript requires a return statement
+  throw new Error("Failed to fetch albums after all retries");
 }

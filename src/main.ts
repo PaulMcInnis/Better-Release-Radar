@@ -43,7 +43,7 @@ export async function scrape() {
   deleteOldCacheFiles();
 
   let artists: Artist[];
-  let albumCache = {};
+  let albumCache: Record<string, any> = {};
 
   // Ensure that the cache directory exists
   if (!fs.existsSync(cacheDir)) {
@@ -79,24 +79,31 @@ export async function scrape() {
 
   const albums: Album[] = [];
   const todayDate = new Date();
-  let filteredLogsBuffer = [];
+  let filteredLogsBuffer: string[] = [];
 
-  for (const artist of artists) {
-    try {
-      // Fetch albums for each artist with retry logic (auth refresh + backoff)
-      const artistAlbums = await fetchArtistAlbumsWithRetry(
-        artist.id,
-        albumCache
-      );
+  // Process artists in parallel batches to improve performance
+  const BATCH_SIZE = 10; // Process 10 artists concurrently
+  
+  for (let i = 0; i < artists.length; i += BATCH_SIZE) {
+    const batch = artists.slice(i, i + BATCH_SIZE);
+    
+    const batchPromises = batch.map(async (artist) => {
+      try {
+        // Fetch albums for each artist with retry logic (auth refresh + backoff)
+        const artistAlbums = await fetchArtistAlbumsWithRetry(
+          artist.id,
+          albumCache
+        );
+        
+        const artistResults = [];
+        for (const album of artistAlbums) {
+          const albumDate = new Date(album.release_date);
 
-      for (const album of artistAlbums) {
-        const albumDate = new Date(album.release_date);
-
-        if (
-          // Release date and release type filter
-          daysBetween(todayDate, albumDate) <=
-            parseInt(options.maxAgeDays, 10) &&
-          (!options.region ||
+          if (
+            // Release date and release type filter
+            daysBetween(todayDate, albumDate) <=
+              parseInt(options.maxAgeDays, 10) &&
+            (!options.region ||
             (album.available_markets &&
               album.available_markets.includes(options.region))) &&
           (!options.hideEps || album.album_type === "album")
@@ -143,13 +150,13 @@ export async function scrape() {
           // If no existing album is found, or this isn't a re-release, add the album
           const primaryArtist = album.artists[0]; // Use the first artist as the primary artist
 
-          albums.push({
+          artistResults.push({
             name: album.name,
             release_date: album.release_date,
             url: options.showUrls
               ? `${SPOTIFY_ALBUM_URL_BASE}${album.id}`
               : album.uri,
-            artist: primaryArtist, // Set the correct primary artist
+            artist: primaryArtist ?? "Unknown Artist", // Provide fallback for undefined
             type: album.album_type as "album" | "single" | "compilation", // Cast to known types
           });
         }
@@ -158,21 +165,33 @@ export async function scrape() {
       // Cache the albums for this artist
       albumCache[artist.id] = artistAlbums;
 
-      // Increment the progress bar after processing each artist
-      overallProgressBar.increment();
+      return artistResults;
     } catch (err) {
       logger.error(
-        `Error fetching albums for artist ${artist.id}: ${err.message}`
+        `Error fetching albums for artist ${artist.id}: ${err instanceof Error ? err.message : String(err)}`
       );
+      return [];
     }
+  });
+
+  // Wait for all artists in the batch to complete
+  const batchResults = await Promise.all(batchPromises);
+  
+  // Flatten and add all results to the main albums array
+  for (const artistResults of batchResults) {
+    albums.push(...artistResults);
   }
+  
+  // Update progress bar by batch size
+  overallProgressBar.increment(batch.length);
+}
 
   // Stop the progress bar when complete
   overallProgressBar.stop();
 
   // Log any filtered albums
   if (options.logFiltered && filteredLogsBuffer.length > 0) {
-    filteredLogsBuffer.forEach((log) => logger.info(log));
+    filteredLogsBuffer.forEach((log: string) => logger.info(log));
   }
 
   // Save the album cache to disk after successful fetching
