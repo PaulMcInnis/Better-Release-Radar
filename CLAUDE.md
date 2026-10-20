@@ -11,7 +11,6 @@ Better-Release-Radar is a TypeScript CLI tool that helps users track new album r
 ### Development Commands
 - `npm start` - Run the main application
 - `npm start -- --help` - Show CLI options
-- `npm run radar` - Past 360 days to `out/releases.json` and `out/releases.html`, opened in the browser
 - `npm run html -- out/releases.json [out.html] [--open]` - Rebuild the HTML page from a JSON report
 - `npm run typecheck` - Strict TypeScript check
 

@@ -57,7 +57,7 @@ To run the script, simply use the following command:
       --show-urls                   Show full URLs instead of Spotify URIs in the table (default: false)
       --log-file <path>             Path to log file (default: log.log)
       --log-level <level>           Logging level, e.g. debug to see retries (default: info)
-      --region <region>             ISO 3166-1 alpha-2 region code to filter albums by availability (default: GB)
+      --region <region>             ISO 3166-1 alpha-2 region code to filter albums by availability (default: CA)
       --hide-eps                    Hide EPs, and Singles, and only show full-length releases (default: false)
       --hide-re-releases            Hide re-releases (default: false)
       --hide-live-recordings        Hide live recordings (default: false)
@@ -82,10 +82,6 @@ This will show full album releases from the last year, filtering out re-releases
 ### HTML page and JSON export
 
     npm start -- --max-age-days 360 --hide-re-releases --hide-live-recordings --json out/releases.json --html out/releases.html --open
-
-Or, as a shortcut for the last 360 days with nothing hidden:
-
-    npm run radar
 
 The HTML page is a single self-contained file showing every release with its cover art. You can:
 

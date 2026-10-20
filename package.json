@@ -5,8 +5,7 @@
   "scripts": {
     "start": "tsx src/main.ts",
     "html": "tsx src/build-html.ts",
-    "typecheck": "tsc --noEmit",
-    "radar": "npm start -- --max-age-days 360 --json out/releases.json --html out/releases.html --open --no-table"
+    "typecheck": "tsc --noEmit"
   },
   "engines": {
     "node": ">=23.6.0"

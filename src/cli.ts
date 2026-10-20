@@ -10,7 +10,7 @@ program
   .option("--show-urls", "Show full URLs instead of Spotify URIs", false)
   .option("--log-file <path>", "Path to log file", "log.log")
   .option("--log-level <level>", "Logging level", "info")
-  .option("--region <region>", "Region for album releases", "GB")
+  .option("--region <region>", "Region for album releases", "CA")
   .option(
     "--hide-eps",
     "Hide EPs, and Singles, and only show full-length releases",
