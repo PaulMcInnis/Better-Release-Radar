@@ -15,6 +15,9 @@ export const artistCacheFile = path.join(
 export const albumCacheFile = path.join(cacheDir, `album_cache_v2_${today}.json`);
 
 export type AlbumCache = { [artistId: string]: RawAlbum[] };
+// Labels don't change, so this cache isn't dated; each run rewrites it, which keeps it from expiring
+export const labelCacheFile = path.join(cacheDir, "album_labels.json");
+export type LabelCache = { [albumId: string]: string | null };
 
 export function ensureCacheDirectoryExists() {
   if (!fs.existsSync(cacheDir)) {
@@ -84,4 +87,15 @@ export function loadAlbumCache(): AlbumCache | null {
 
 export function saveAlbumCache(cache: AlbumCache) {
   fs.writeFileSync(albumCacheFile, JSON.stringify(cache));
+}
+
+export function loadLabelCache(): LabelCache {
+  if (fs.existsSync(labelCacheFile)) {
+    return JSON.parse(fs.readFileSync(labelCacheFile, "utf8"));
+  }
+  return {};
+}
+
+export function saveLabelCache(cache: LabelCache) {
+  fs.writeFileSync(labelCacheFile, JSON.stringify(cache));
 }

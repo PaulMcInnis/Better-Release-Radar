@@ -41,6 +41,7 @@ export interface Release {
   artist: string; // Primary (followed) artist
   artistId: string;
   artists: string[];
+  label: string | null;
   releaseDate: string;
   type: ReleaseType;
   totalTracks: number | null;

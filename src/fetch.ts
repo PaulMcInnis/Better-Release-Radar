@@ -1,5 +1,5 @@
 import { refreshAccessToken } from "./auth";
-import { AlbumCache } from "./cache";
+import { AlbumCache, LabelCache } from "./cache";
 import { Artist, RawAlbum } from "./interfaces";
 import { logger } from "./logger";
 import { spotifyApi } from "./main";
@@ -100,18 +100,17 @@ export async function fetchArtistAlbums(
 }
 
 // Retry mechanism with token refresh for auth issues and exponential backoff for other errors
-export async function fetchArtistAlbumsWithRetry(
-  artistId: string,
-  cache: AlbumCache
-): Promise<RawAlbum[]> {
+async function withRetry<T>(
+  description: string,
+  request: () => Promise<T>
+): Promise<T> {
   let retries = 5; // Max number of attempts for non-auth errors
   let backoffDelay = 1000; // Initial backoff delay in milliseconds
   let refreshedToken = false;
 
   while (true) {
     try {
-      // Try fetching artist albums
-      return await fetchArtistAlbums(artistId, cache);
+      return await request();
     } catch (err) {
       if (err.statusCode === 401 && !refreshedToken) {
         // If it's an authentication issue (token expired), refresh the token once and retry immediately
@@ -134,12 +133,45 @@ export async function fetchArtistAlbumsWithRetry(
           ? retryAfterSeconds * 1000
           : backoffDelay;
       logger.debug(
-        `Fetching albums for artist ${artistId} failed (${
+        `${description} failed (${
           err.statusCode ?? err.message
         }), retrying after ${delay / 1000} seconds... (${retries} retries left)`
       );
       await sleep(delay);
       backoffDelay *= 2; // Exponential backoff (double the delay)
+    }
+  }
+}
+
+export function fetchArtistAlbumsWithRetry(
+  artistId: string,
+  cache: AlbumCache
+): Promise<RawAlbum[]> {
+  return withRetry(`Fetching albums for artist ${artistId}`, () =>
+    fetchArtistAlbums(artistId, cache)
+  );
+}
+
+// The artist albums endpoint doesn't include labels, so look them up in batches
+// of 20 (the most Spotify allows) and add them to the label cache
+export async function fetchAlbumLabels(
+  albumIds: string[],
+  labelCache: LabelCache
+): Promise<void> {
+  const missing = [...new Set(albumIds)].filter((id) => !(id in labelCache));
+  const batchSize = 20;
+  for (let i = 0; i < missing.length; i += batchSize) {
+    const batch = missing.slice(i, i + batchSize);
+    try {
+      const response = await withRetry("Fetching album labels", () =>
+        spotifyApi.getAlbums(batch)
+      );
+      response.body.albums.forEach((album, index) => {
+        labelCache[batch[index]] = album?.label?.trim() || null;
+      });
+    } catch (err) {
+      // Labels are a nice-to-have; leave these uncached so the next run tries again
+      logger.warn(`Couldn't fetch labels for ${batch.length} albums: ${err.message}`);
     }
   }
 }

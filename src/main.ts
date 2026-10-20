@@ -7,12 +7,18 @@ import {
   ensureCacheDirectoryExists,
   loadAlbumCache,
   loadArtistCache,
+  loadLabelCache,
   saveAlbumCache,
   saveArtistCache,
+  saveLabelCache,
 } from "./cache";
 import { options } from "./cli";
 import { displayAlbums } from "./display";
-import { fetchArtistAlbumsWithRetry, fetchFollowedArtists } from "./fetch";
+import {
+  fetchAlbumLabels,
+  fetchArtistAlbumsWithRetry,
+  fetchFollowedArtists,
+} from "./fetch";
 import { getReleaseType, getTags, normalizeAlbumName } from "./filters";
 import { Artist, RawAlbum, Release, ReleaseTag, ReleaseType } from "./interfaces";
 import { logger } from "./logger";
@@ -60,6 +66,7 @@ function toRelease(album: RawAlbum, artist: Artist): Release {
     artist: album.artists[0], // The primary artist is the followed artist
     artistId: artist.id,
     artists: album.artists,
+    label: null, // Filled in from the label cache once all releases are known
     releaseDate: album.release_date,
     type: getReleaseType(album),
     totalTracks: album.total_tracks ?? null,
@@ -171,6 +178,17 @@ export async function scrape() {
         .join(", ")}`
     );
   }
+
+  // Look up record labels for the releases we're going to show
+  const labelCache = loadLabelCache();
+  await fetchAlbumLabels(
+    releases.map((release) => release.id),
+    labelCache
+  );
+  saveLabelCache(labelCache);
+  releases.forEach((release) => {
+    release.label = labelCache[release.id] ?? null;
+  });
 
   // Sort albums by release date, newest first
   const allReleases = dedupeReleases(

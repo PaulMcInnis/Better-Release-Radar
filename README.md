@@ -89,10 +89,11 @@ Or, as a shortcut for the last 360 days with nothing hidden:
 
 The HTML page is a single self-contained file showing every release with its cover art. You can:
 
-- search by artist or title, and click an artist's name to show only their releases
+- search by artist, title or record label; click an artist or label name to show only their releases
 - filter by type (Album, EP, Single, Compilation) and by tag (Re-release, Live, Soundtrack, Remix)
 - narrow to the past week, month, 3 or 6 months
-- sort by newest, oldest, artist, title or track count; date sorts are grouped by month
+- sort by newest, oldest, artist, title or label; date sorts are grouped by month
+- each release shows the artist in bold, the title in italics, then (label, release date)
 - switch between a grid of covers and a compact list
 - click any release to open it in the Spotify app, or switch to the web player
 

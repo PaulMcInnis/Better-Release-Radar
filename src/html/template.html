@@ -143,13 +143,22 @@
     text-transform: uppercase; letter-spacing: 0.05em;
   }
   .badge.new { left: auto; right: 8px; background: var(--accent); color: var(--accent-text); }
-  .title { font-weight: 600; margin-top: 8px; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
-  .artist {
-    background: none; border: 0; padding: 0; cursor: pointer; color: var(--muted);
-    text-align: left; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block;
+  .text { margin-top: 8px; min-width: 0; }
+  .artist, .label {
+    background: none; border: 0; padding: 0; margin: 0; cursor: pointer;
+    font: inherit; color: inherit; text-align: left;
   }
-  .artist:hover { color: var(--text); text-decoration: underline; }
-  .sub { color: var(--muted); font-size: 12px; margin-top: 2px; font-variant-numeric: tabular-nums; }
+  .artist {
+    font-weight: 700; display: block; max-width: 100%;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .title {
+    font-style: italic; color: inherit; text-decoration: none;
+    overflow: hidden; text-overflow: ellipsis;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  }
+  .artist:hover, .label:hover, .title:hover { text-decoration: underline; }
+  .sub { color: var(--muted); font-size: 13px; margin-top: 1px; }
   .tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
   .tag { font-size: 11px; padding: 0 6px; border-radius: 5px; border: 1px solid currentColor; line-height: 17px; }
   .tag.re-release { color: var(--tag-re-release); }
@@ -160,30 +169,32 @@
   /* List view */
   .list .grid { grid-template-columns: 1fr; gap: 2px; }
   .list .card {
-    display: grid; grid-template-columns: 52px minmax(0, 1fr) auto; gap: 4px 14px; align-items: center;
+    display: grid; grid-template-columns: 60px minmax(0, 1fr) auto; gap: 14px; align-items: center;
     padding: 6px; border-radius: 10px;
   }
   .list .card:hover { background: var(--surface); }
-  .list .card a.open { display: contents; }
-  .list .cover { width: 52px; border-radius: 6px; box-shadow: none; grid-column: 1; grid-row: 1 / span 2; }
-  .list .cover .placeholder { font-size: 20px; }
+  .list .cover { width: 60px; border-radius: 6px; box-shadow: none; }
+  .list .cover .placeholder { font-size: 22px; }
   .list .badge, .list .play { display: none; }
-  .list .title { margin: 0; -webkit-line-clamp: 1; grid-column: 2; grid-row: 1; }
-  .list .meta-col { grid-column: 2; grid-row: 2; display: flex; gap: 10px; min-width: 0; align-items: baseline; }
-  .list .artist { flex: 0 1 auto; }
-  .list .sub { margin: 0; white-space: nowrap; }
-  .list .tags { margin: 0; flex-wrap: nowrap; }
-  .list .type-col { grid-column: 3; grid-row: 1 / span 2; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; }
+  .list .text { margin: 0; }
+  .list .title { -webkit-line-clamp: 1; }
+  .list .type-col { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; }
   .grid-view .type-col { display: none; }
 
+  .focus {
+    display: inline-flex; align-items: center; gap: 6px; margin-left: 10px;
+    padding: 2px 4px 2px 10px; border-radius: 999px; background: var(--surface-2); color: var(--text);
+  }
+  .focus button { background: none; border: 0; cursor: pointer; padding: 0 6px; font-size: 15px; line-height: 1; color: var(--muted); }
+  .focus button:hover { color: var(--text); }
+
   .empty { text-align: center; color: var(--muted); padding: 60px 0; }
-  footer { color: var(--muted); font-size: 12px; padding: 40px 0 30px; }
+  footer { color: var(--muted); font-size: 12px; padding-top: 40px; padding-bottom: 30px; }
 
   @media (max-width: 600px) {
     header.page h1 { font-size: 22px; }
     .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
     .toolbar { position: static; }
-    .list .sub { display: none; }
   }
 </style>
 </head>
@@ -195,7 +206,7 @@
 
   <div class="toolbar">
     <div class="wrap">
-      <input class="search" id="search" type="search" placeholder="Search artists and titles  ( / )" aria-label="Search artists and titles">
+      <input class="search" id="search" type="search" placeholder="Search artists, titles and labels  ( / )" aria-label="Search artists, titles and labels">
       <div class="group" id="types"><span class="group-label">Type</span></div>
       <div class="group" id="tags"><span class="group-label">Include</span></div>
       <div class="group">
@@ -211,7 +222,7 @@
           <option value="oldest">Oldest first</option>
           <option value="artist">Artist A–Z</option>
           <option value="title">Title A–Z</option>
-          <option value="tracks">Most tracks</option>
+          <option value="label">Label A–Z</option>
         </select>
       </div>
       <div class="group">
@@ -275,6 +286,7 @@
     return {
       query: "",
       period: 0,
+      focus: null, // { kind: "artist" | "label", value, text } from clicking a name
       types: new Set(TYPES.map(function (t) { return t.id; }).filter(function (id) { return report.hidden.types.indexOf(id) === -1; })),
       tags: new Set(TAGS.map(function (t) { return t.id; }).filter(function (id) { return report.hidden.tags.indexOf(id) === -1; }))
     };
@@ -282,7 +294,7 @@
 
   var prefs = loadPrefs();
   var state = Object.assign(defaultFilters(), {
-    sort: prefs.sort || "newest",
+    sort: prefs.sort || "newest", // checked against the sorters below
     view: prefs.view || "grid",
     openIn: prefs.openIn || "app"
   });
@@ -296,7 +308,7 @@
   releases.forEach(function (r) {
     r._date = parseDate(r.releaseDate);
     r._age = (generatedAt - r._date) / DAY;
-    r._search = (r.name + " " + r.artists.join(" ")).toLowerCase();
+    r._search = (r.name + " " + r.artists.join(" ") + " " + (r.label || "")).toLowerCase();
   });
 
   function formatDate(r) {
@@ -377,13 +389,14 @@
     if (e.key === "/" && document.activeElement !== search) { e.preventDefault(); search.focus(); }
     if (e.key === "Escape" && document.activeElement === search && search.value) {
       search.value = ""; state.query = ""; render();
+    } else if (e.key === "Escape" && state.focus) {
+      state.focus = null; render();
     }
   });
 
-  // Clicking an artist name narrows the list to that artist
-  function filterToArtist(name) {
-    search.value = name;
-    state.query = name.toLowerCase();
+  // Clicking an artist or label narrows the list to exactly that artist or label
+  function setFocus(kind, value, text) {
+    state.focus = { kind: kind, value: value, text: text };
     render();
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -393,6 +406,8 @@
     for (var i = 0; i < r.tags.length; i++) if (!state.tags.has(r.tags[i])) return false;
     if (state.period && r._age > state.period) return false;
     if (state.query && r._search.indexOf(state.query) === -1) return false;
+    if (state.focus && state.focus.kind === "artist" && r.artistId !== state.focus.value) return false;
+    if (state.focus && state.focus.kind === "label" && r.label !== state.focus.value) return false;
     return true;
   }
 
@@ -402,8 +417,13 @@
     oldest: function (a, b) { return a._date - b._date || collator.compare(a.artist, b.artist); },
     artist: function (a, b) { return collator.compare(a.artist, b.artist) || b._date - a._date; },
     title: function (a, b) { return collator.compare(a.name, b.name); },
-    tracks: function (a, b) { return (b.totalTracks || 0) - (a.totalTracks || 0) || b._date - a._date; }
+    label: function (a, b) {
+      // Releases without a label go last
+      if (!a.label !== !b.label) return a.label ? -1 : 1;
+      return collator.compare(a.label || "", b.label || "") || b._date - a._date;
+    }
   };
+  if (!sorters[state.sort]) state.sort = "newest";
 
   // Stable colour from an id, for covers that have no image
   function hue(id) {
@@ -428,14 +448,18 @@
     return e;
   }
 
+  function openLink(r, cls) {
+    var a = el("a", cls);
+    a.href = state.openIn === "app" ? r.uri : r.url;
+    if (state.openIn === "web") { a.target = "_blank"; a.rel = "noopener"; }
+    a.title = r.artists.join(", ") + " — " + r.name + (r.label ? " (" + r.label + ")" : "");
+    return a;
+  }
+
   function card(r) {
     var c = el("article", "card");
 
-    var a = el("a", "open");
-    a.href = state.openIn === "app" ? r.uri : r.url;
-    if (state.openIn === "web") { a.target = "_blank"; a.rel = "noopener"; }
-    a.title = r.name + " — " + r.artists.join(", ");
-
+    var a = openLink(r, "open");
     var cover = el("div", "cover");
     var src = state.view === "list" ? (r.thumbnail || r.image) : (r.image || r.thumbnail);
     if (src) {
@@ -455,24 +479,39 @@
     play.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2.5v11l9.5-5.5z" fill="currentColor"/></svg>';
     cover.appendChild(play);
     a.appendChild(cover);
-    a.appendChild(el("div", "title", r.name));
     c.appendChild(a);
 
-    var meta = el("div", "meta-col");
+    // Artist (bold), title (italic), then "(Label, Date)"
+    var text = el("div", "text");
     var artist = el("button", "artist", r.artists.join(", "));
     artist.type = "button";
     artist.title = "Show only " + r.artist;
-    artist.addEventListener("click", function () { filterToArtist(r.artist); });
-    meta.appendChild(artist);
-    var sub = formatDate(r);
-    if (r.totalTracks) sub += " · " + r.totalTracks + (r.totalTracks === 1 ? " track" : " tracks");
-    meta.appendChild(el("div", "sub", sub));
+    artist.addEventListener("click", function () { setFocus("artist", r.artistId, r.artist); });
+    text.appendChild(artist);
+
+    var title = openLink(r, "title");
+    title.textContent = r.name;
+    text.appendChild(title);
+
+    var sub = el("div", "sub");
+    sub.appendChild(document.createTextNode("("));
+    if (r.label) {
+      var label = el("button", "label", r.label);
+      label.type = "button";
+      label.title = "Show only " + r.label;
+      label.addEventListener("click", function () { setFocus("label", r.label, r.label); });
+      sub.appendChild(label);
+      sub.appendChild(document.createTextNode(", "));
+    }
+    sub.appendChild(document.createTextNode(formatDate(r) + ")"));
+    text.appendChild(sub);
+
     if (r.tags.length) {
       var tags = el("div", "tags");
       r.tags.forEach(function (t) { tags.appendChild(el("span", "tag " + t, TAG_LABELS[t])); });
-      meta.appendChild(tags);
+      text.appendChild(tags);
     }
-    c.appendChild(meta);
+    c.appendChild(text);
     c.appendChild(el("div", "type-col", TYPE_LABELS[r.type]));
     return c;
   }
@@ -493,9 +532,20 @@
     results.className = state.view === "list" ? "list" : "grid-view";
     results.textContent = "";
 
-    document.getElementById("status").textContent = list.length === releases.length
+    var status = document.getElementById("status");
+    status.textContent = list.length === releases.length
       ? "Showing all " + releases.length + " releases"
       : "Showing " + list.length + " of " + releases.length + " releases";
+    if (state.focus) {
+      var focus = el("span", "focus", (state.focus.kind === "label" ? "Label: " : "Artist: ") + state.focus.text);
+      var clear = el("button", null, "×");
+      clear.type = "button";
+      clear.title = "Show all " + (state.focus.kind === "label" ? "labels" : "artists");
+      clear.setAttribute("aria-label", clear.title);
+      clear.addEventListener("click", function () { state.focus = null; render(); });
+      focus.appendChild(clear);
+      status.appendChild(focus);
+    }
 
     if (!list.length) {
       results.appendChild(el("p", "empty", "No releases match these filters."));
