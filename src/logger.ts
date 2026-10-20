@@ -1,7 +1,8 @@
 import winston from "winston";
+import { options } from "./cli.ts";
 
 export const logger = winston.createLogger({
-  level: "info",
+  level: options.logLevel,
   format: winston.format.combine(
     winston.format.timestamp({ format: "MM-DD HH:mm" }),
     winston.format.printf(({ timestamp, level, message }) => {
@@ -10,6 +11,6 @@ export const logger = winston.createLogger({
   ),
   transports: [
     new winston.transports.Console(),
-    new winston.transports.File({ filename: "log.log" }),
+    new winston.transports.File({ filename: options.logFile }),
   ],
 });

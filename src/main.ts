@@ -1,71 +1,121 @@
 import cliProgress from "cli-progress";
-import * as fs from "fs";
 import SpotifyWebApi from "spotify-web-api-node";
 import { authenticateSpotify } from "./auth.ts";
 import {
-  albumCacheFile,
-  artistCacheFile,
-  cacheDir,
+  type AlbumCache,
   deleteOldCacheFiles,
   ensureCacheDirectoryExists,
+  loadAlbumCache,
+  loadArtistCache,
+  loadLabelCache,
+  saveAlbumCache,
+  saveArtistCache,
+  saveLabelCache,
 } from "./cache.ts";
 import { options } from "./cli.ts";
 import { displayAlbums } from "./display.ts";
-import { fetchArtistAlbumsWithRetry, fetchFollowedArtists } from "./fetch.ts";
 import {
-  isLiveRecording,
-  isRemix,
-  isReRelease,
-  isSoundtrack,
-  normalizeAlbumName,
-} from "./filters.ts";
-import { type Album, type Artist } from "./interfaces.ts";
+  fetchAlbumLabels,
+  fetchArtistAlbumsWithRetry,
+  fetchFollowedArtists,
+} from "./fetch.ts";
+import { getReleaseType, getTags, normalizeAlbumName } from "./filters.ts";
+import type { Artist, RawAlbum, Release, ReleaseTag, ReleaseType } from "./interfaces.ts";
 import { logger } from "./logger.ts";
+import { openInBrowser, writeHtml, writeJson } from "./output.ts";
 
 // Set up Spotify API
 const SPOTIFY_ALBUM_URL_BASE = "https://open.spotify.com/album/";
 export const spotifyApi = new SpotifyWebApi({
   clientId: process.env.SPOTIPY_CLIENT_ID || "",
   clientSecret: process.env.SPOTIPY_CLIENT_SECRET || "",
-  redirectUri: "http://localhost:8888/callback",
+  redirectUri: "http://127.0.0.1:8888/callback",
 });
 
 const daysBetween = (date1: Date, date2: Date) =>
   Math.abs((+date1 - +date2) / (1000 * 60 * 60 * 24));
 
+// Number of artists fetched concurrently
+const ARTIST_BATCH_SIZE = 10;
+
+// Save partial progress every few batches, so a crash mid-run doesn't lose everything
+const ALBUM_CACHE_SAVE_BATCHES = 5;
+
+// Which types and tags the CLI flags hide
+function hiddenFromOptions(): { types: ReleaseType[]; tags: ReleaseTag[] } {
+  const tags: ReleaseTag[] = [];
+  if (options.hideReReleases) tags.push("re-release");
+  if (options.hideLiveRecordings) tags.push("live");
+  if (options.hideSoundtracks) tags.push("soundtrack");
+  if (options.hideRemixes) tags.push("remix");
+  return {
+    types: options.hideEps ? ["single", "ep", "compilation"] : [],
+    tags,
+  };
+}
+
+function toRelease(album: RawAlbum, artist: Artist): Release {
+  // Spotify lists images largest first, typically 640px, 300px and 64px
+  const images = [...(album.images ?? [])].sort(
+    (a, b) => (b.width ?? 0) - (a.width ?? 0)
+  );
+  const image =
+    images.find((img) => (img.width ?? 0) <= 300) ?? images[0] ?? null;
+  const thumbnail = images[images.length - 1] ?? null;
+
+  return {
+    id: album.id,
+    name: album.name,
+    artist: album.artists[0] ?? artist.name, // The primary artist is the followed artist
+    artistId: artist.id,
+    artists: album.artists,
+    label: null, // Filled in from the label cache once all releases are known
+    releaseDate: album.release_date,
+    type: getReleaseType(album),
+    totalTracks: album.total_tracks ?? null,
+    tags: getTags(album.name),
+    uri: album.uri,
+    url: `${SPOTIFY_ALBUM_URL_BASE}${album.id}`,
+    image: image ? image.url : null,
+    thumbnail: thumbnail ? thumbnail.url : null,
+  };
+}
+
+// Spotify often lists the same release more than once (e.g. per-market or re-uploaded copies)
+function dedupeReleases(releases: Release[]): Release[] {
+  const seen = new Set<string>();
+  return releases.filter((release) => {
+    const key = `${release.artistId}|${release.type}|${normalizeAlbumName(
+      release.name
+    )}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 // Main function to fetch and display albums
 export async function scrape() {
   logger.info("Starting Better Release Radar...");
+
   ensureCacheDirectoryExists();
-
-  await authenticateSpotify();
-
   deleteOldCacheFiles();
 
-  let artists: Artist[];
-  let albumCache: Record<string, any> = {};
-
-  // Ensure that the cache directory exists
-  if (!fs.existsSync(cacheDir)) {
-    fs.mkdirSync(cacheDir);
-  }
-
   // Load cached artists if available
-  if (fs.existsSync(artistCacheFile)) {
-    artists = JSON.parse(fs.readFileSync(artistCacheFile, "utf8"));
-    logger.info(`Loaded artists from cache: ${artistCacheFile}`);
+  let artists = loadArtistCache();
+  if (artists) {
+    logger.info("Loaded followed artists from today's cache");
   } else {
     artists = await fetchFollowedArtists();
-    fs.writeFileSync(artistCacheFile, JSON.stringify(artists));
+    saveArtistCache(artists);
     logger.info("Fetched and cached followed artists");
   }
 
   // Load cached albums if available
-  let isAlbumCacheLoaded = false;
-  if (fs.existsSync(albumCacheFile)) {
-    albumCache = JSON.parse(fs.readFileSync(albumCacheFile, "utf8"));
-    logger.info(`Loaded albums from cache: ${albumCacheFile}`);
-    isAlbumCacheLoaded = true;
+  const cachedAlbums = loadAlbumCache();
+  const albumCache: AlbumCache = cachedAlbums ?? {};
+  if (cachedAlbums) {
+    logger.info("Loaded albums from today's cache");
   } else {
     logger.info("Fetching artists' albums...");
   }
@@ -77,137 +127,134 @@ export async function scrape() {
   );
   overallProgressBar.start(artists.length, 0); // Total steps: number of artists
 
-  const albums: Album[] = [];
+  const releases: Release[] = [];
+  const failedArtists: Artist[] = [];
   const todayDate = new Date();
-  let filteredLogsBuffer: string[] = [];
+  const maxAgeDays = parseInt(options.maxAgeDays, 10);
 
   // Process artists in parallel batches to improve performance
-  const BATCH_SIZE = 10; // Process 10 artists concurrently
-  
-  for (let i = 0; i < artists.length; i += BATCH_SIZE) {
-    const batch = artists.slice(i, i + BATCH_SIZE);
-    
-    const batchPromises = batch.map(async (artist) => {
-      try {
-        // Fetch albums for each artist with retry logic (auth refresh + backoff)
-        const artistAlbums = await fetchArtistAlbumsWithRetry(
-          artist.id,
-          albumCache
-        );
-        
-        const artistResults = [];
-        for (const album of artistAlbums) {
-          const albumDate = new Date(album.release_date);
+  for (let i = 0; i < artists.length; i += ARTIST_BATCH_SIZE) {
+    const batch = artists.slice(i, i + ARTIST_BATCH_SIZE);
 
-          if (
-            // Release date and release type filter
-            daysBetween(todayDate, albumDate) <=
-              parseInt(options.maxAgeDays, 10) &&
-            (!options.region ||
-            (album.available_markets &&
-              album.available_markets.includes(options.region))) &&
-          (!options.hideEps || album.album_type === "album")
-        ) {
-          // NOTE: these can be a bit too aggressive, but we do show the albums we are filtering, and we do provide flags.
-          const normalizedAlbumName = normalizeAlbumName(album.name);
-          const filteredAlbumString = `${album.artists[0]} - ${album.name} - ${album.uri}`;
+    await Promise.all(
+      batch.map(async (artist) => {
+        try {
+          // Fetch albums for each artist with retry logic (auth refresh + backoff)
+          const artistAlbums = await fetchArtistAlbumsWithRetry(
+            artist.id,
+            albumCache
+          );
 
-          // Live recording filter
-          if (
-            options.hideLiveRecordings &&
-            isLiveRecording(normalizedAlbumName)
-          ) {
-            filteredLogsBuffer.push(
-              "Filtered out live album: " + filteredAlbumString
-            );
-            continue;
+          for (const album of artistAlbums) {
+            const albumDate = new Date(album.release_date);
+
+            // Release date and region filter. Type and tag filters are applied per output below.
+            if (
+              daysBetween(todayDate, albumDate) <= maxAgeDays &&
+              (!options.region ||
+                (album.available_markets &&
+                  album.available_markets.includes(options.region)))
+            ) {
+              releases.push(toRelease(album, artist));
+            }
           }
-
-          // Re-release detection filter
-          if (options.hideReReleases && isReRelease(normalizedAlbumName)) {
-            filteredLogsBuffer.push(
-              "Filtered out re-release: " + filteredAlbumString
-            );
-            continue;
-          }
-
-          // Soundtracks
-          if (options.hideSoundtracks && isSoundtrack(normalizedAlbumName)) {
-            filteredLogsBuffer.push(
-              "Filtered out soundtrack: " + filteredAlbumString
-            );
-            continue;
-          }
-
-          // Remixes
-          if (options.hideRemixes && isRemix(normalizedAlbumName)) {
-            filteredLogsBuffer.push(
-              "Filtered out remix: " + filteredAlbumString
-            );
-            continue;
-          }
-
-          // If no existing album is found, or this isn't a re-release, add the album
-          const primaryArtist = album.artists[0]; // Use the first artist as the primary artist
-
-          artistResults.push({
-            name: album.name,
-            release_date: album.release_date,
-            url: options.showUrls
-              ? `${SPOTIFY_ALBUM_URL_BASE}${album.id}`
-              : album.uri,
-            artist: primaryArtist ?? "Unknown Artist", // Provide fallback for undefined
-            type: album.album_type as "album" | "single" | "compilation", // Cast to known types
-          });
+        } catch (err: any) {
+          failedArtists.push(artist);
+          logger.debug(
+            `Error fetching albums for artist ${artist.name} (${artist.id}): ${err.message}`
+          );
         }
-      }
 
-      // Cache the albums for this artist
-      albumCache[artist.id] = artistAlbums;
+        // Increment the progress bar after processing each artist
+        overallProgressBar.increment();
+      })
+    );
 
-      return artistResults;
-    } catch (err) {
-      logger.error(
-        `Error fetching albums for artist ${artist.id}: ${err instanceof Error ? err.message : String(err)}`
-      );
-      return [];
+    if ((i / ARTIST_BATCH_SIZE + 1) % ALBUM_CACHE_SAVE_BATCHES === 0) {
+      saveAlbumCache(albumCache);
     }
-  });
-
-  // Wait for all artists in the batch to complete
-  const batchResults = await Promise.all(batchPromises);
-  
-  // Flatten and add all results to the main albums array
-  for (const artistResults of batchResults) {
-    albums.push(...artistResults);
   }
-  
-  // Update progress bar by batch size
-  overallProgressBar.increment(batch.length);
-}
 
   // Stop the progress bar when complete
   overallProgressBar.stop();
 
-  // Log any filtered albums
-  if (options.logFiltered && filteredLogsBuffer.length > 0) {
-    filteredLogsBuffer.forEach((log: string) => logger.info(log));
+  // Save the album cache to disk, including artists that failed in an earlier run today
+  saveAlbumCache(albumCache);
+
+  if (failedArtists.length > 0) {
+    logger.warn(
+      `Couldn't fetch albums for ${failedArtists.length} artist(s): ${failedArtists
+        .map((artist) => artist.name)
+        .join(", ")}`
+    );
   }
 
-  // Save the album cache to disk after successful fetching
-  if (!isAlbumCacheLoaded) {
-    fs.writeFileSync(albumCacheFile, JSON.stringify(albumCache, null, 2));
-    logger.info(`Album cache saved successfully at ${albumCacheFile}`);
-  }
+  // Look up record labels for the releases we're going to show
+  const labelCache = loadLabelCache();
+  await fetchAlbumLabels(
+    releases.map((release) => release.id),
+    labelCache
+  );
+  saveLabelCache(labelCache);
+  releases.forEach((release) => {
+    release.label = labelCache[release.id] ?? null;
+  });
 
-  // Sort albums by release date
-  albums.sort(
-    (a, b) =>
-      new Date(b.release_date).getTime() - new Date(a.release_date).getTime()
+  // Sort albums by release date, newest first
+  const allReleases = dedupeReleases(
+    releases.sort(
+      (a, b) =>
+        new Date(b.releaseDate).getTime() - new Date(a.releaseDate).getTime()
+    )
   );
 
+  // NOTE: the tag filters can be a bit too aggressive, but we log what they hide (--log-filtered),
+  // and the JSON/HTML outputs keep everything so hidden releases can be toggled back on.
+  const hidden = hiddenFromOptions();
+  const visibleReleases = allReleases.filter((release) => {
+    const hiddenTag = release.tags.find((tag) => hidden.tags.includes(tag));
+    const hiddenType = hidden.types.includes(release.type);
+    if (hiddenTag || hiddenType) {
+      if (options.logFiltered) {
+        logger.info(
+          `Filtered out ${hiddenTag ?? release.type}: ${release.artist} - ${
+            release.name
+          } - ${release.uri}`
+        );
+      }
+      return false;
+    }
+    return true;
+  });
+
   // Output the albums in a nice table format
-  displayAlbums(albums);
+  if (options.table) {
+    displayAlbums(visibleReleases, options.showUrls);
+  }
+  logger.info(
+    `Found ${allReleases.length} releases, showing ${visibleReleases.length} after filters.`
+  );
+
+  const report = {
+    generatedAt: todayDate.toISOString(),
+    region: options.region || null,
+    maxAgeDays,
+    artistCount: artists.length,
+    hidden,
+    releases: allReleases,
+  };
+
+  if (options.json) {
+    writeJson(report, options.json);
+    logger.info(`Wrote JSON to ${options.json}`);
+  }
+  if (options.html) {
+    writeHtml(report, options.html);
+    logger.info(`Wrote HTML page to ${options.html}`);
+    if (options.open) {
+      openInBrowser(options.html);
+    }
+  }
 }
 
 async function main() {
@@ -215,7 +262,7 @@ async function main() {
   if (isAuthenticated) {
     // If tokens were valid or refreshed, continue with main
     await scrape().catch((err) => {
-      logger.error("Error running the script:", err);
+      logger.error(`Error running the script: ${err.message}`);
     });
   } else {
     logger.info("Waiting for authorization before running main...");

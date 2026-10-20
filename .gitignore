@@ -43,3 +43,6 @@ coverage/
 
 # MacOS-specific files
 .DS_Store
+
+# Generated release reports
+out/

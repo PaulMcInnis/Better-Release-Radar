@@ -1,3 +1,5 @@
+import type { RawAlbum, ReleaseTag, ReleaseType } from "./interfaces.ts";
+
 // Define regular expressions to filter out re-releases
 const reReleasePatterns = [
   /\bdeluxe\b/i,
@@ -75,4 +77,26 @@ const remixPatterns = [
 // Function to check if an album is a remix
 export function isRemix(normalizedAlbumName: string): boolean {
   return remixPatterns.some((pattern) => pattern.test(normalizedAlbumName));
+}
+
+// Collect every tag that applies to an album, so outputs can filter on them later
+export function getTags(albumName: string): ReleaseTag[] {
+  const normalizedAlbumName = normalizeAlbumName(albumName);
+  const tags: ReleaseTag[] = [];
+  if (isReRelease(normalizedAlbumName)) tags.push("re-release");
+  if (isLiveRecording(normalizedAlbumName)) tags.push("live");
+  if (isSoundtrack(normalizedAlbumName)) tags.push("soundtrack");
+  if (isRemix(normalizedAlbumName)) tags.push("remix");
+  return tags;
+}
+
+// Spotify reports EPs as singles; treat 4+ tracks (or "EP" in the title) as an EP
+export function getReleaseType(album: RawAlbum): ReleaseType {
+  if (
+    album.album_type === "single" &&
+    ((album.total_tracks ?? 0) >= 4 || /\bep\b/i.test(album.name))
+  ) {
+    return "ep";
+  }
+  return album.album_type;
 }

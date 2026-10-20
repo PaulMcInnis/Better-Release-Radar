@@ -22,18 +22,19 @@ function getAuthorizationURL() {
 async function exchangeAuthorizationCode(code: string) {
   try {
     const data = await spotifyApi.authorizationCodeGrant(code);
-    const { access_token, refresh_token } = data.body;
+    const { access_token, refresh_token, expires_in } = data.body;
     spotifyApi.setAccessToken(access_token);
     spotifyApi.setRefreshToken(refresh_token);
-    saveTokensToCache(access_token, refresh_token);
+    saveTokensToCache(access_token, refresh_token, expires_in);
     logger.info("Access token and refresh token set.");
-  } catch (err) {
-    console.error("Error exchanging authorization code:", err);
+  } catch (err: any) {
+    logger.error(`Error exchanging authorization code: ${err.message}`);
   }
 }
 
 // Step 5: Use refresh token to get a new access token (if needed)
-export async function refreshAccessToken() {
+// Returns false when the refresh token is missing or rejected, e.g. after rotating the client secret
+export async function refreshAccessToken(): Promise<boolean> {
   logger.info("Refreshing access token...");
   try {
     const tokens = loadTokensFromCache(); // Load tokens before trying to refresh
@@ -47,16 +48,19 @@ export async function refreshAccessToken() {
     // Attempt to refresh the access token using the refresh token
     const data = await spotifyApi.refreshAccessToken();
     const accessToken = data.body["access_token"];
+    // Spotify may rotate the refresh token; keep the old one if it doesn't
+    const refreshToken = data.body["refresh_token"] || tokens.refreshToken;
 
     // Update the spotifyApi instance with the new access token
     spotifyApi.setAccessToken(accessToken);
 
-    // Save the new access token, but keep the same refresh token in the cache
-    saveTokensToCache(accessToken, tokens.refreshToken);
+    saveTokensToCache(accessToken, refreshToken, data.body["expires_in"]);
 
     logger.info("Access token has been refreshed.");
-  } catch (err) {
-    console.error("Error refreshing access token", err);
+    return true;
+  } catch (err: any) {
+    logger.error(`Error refreshing access token: ${err.message}`);
+    return false;
   }
 }
 // Step 6: Authenticate Spotify (Use cached tokens or refresh if needed)
@@ -69,23 +73,24 @@ export async function authenticateSpotify(): Promise<boolean> {
     spotifyApi.setRefreshToken(tokens.refreshToken);
     logger.info("Using cached Spotify tokens.");
     return true; // Return true since authentication is successful
-  } else if (tokens && tokens.refreshToken) {
-    // If tokens exist but access token is expired, refresh the token
-    await refreshAccessToken();
-    return true; // After refreshing, return true
-  } else {
-    // No valid tokens, need to authenticate
-    getAuthorizationURL();
-    startLocalServer();
-    return false; // Indicate that manual authorization is needed
   }
+
+  // If tokens exist but access token is expired, refresh the token
+  if (tokens && tokens.refreshToken && (await refreshAccessToken())) {
+    return true;
+  }
+
+  // No valid tokens, or the refresh was rejected: need to authenticate
+  getAuthorizationURL();
+  startLocalServer();
+  return false; // Indicate that manual authorization is needed
 }
 
 // By running a local server to receive the authorization code, we can automate the process of getting the code from the user.
 function startLocalServer() {
   const server = http.createServer(async (req, res) => {
     if (req.url && req.url.startsWith("/callback")) {
-      const url = new URL(req.url, `http://localhost:8888`);
+      const url = new URL(req.url, `http://127.0.0.1:8888`);
       const code = url.searchParams.get("code");
 
       if (code) {
@@ -108,9 +113,9 @@ function startLocalServer() {
     }
   });
 
-  server.listen(8888, () => {
+  server.listen(8888, "0.0.0.0", () => {
     logger.info(
-      "Listening for Spotify authorization code on http://localhost:8888/callback"
+      "Listening for Spotify authorization code on http://127.0.0.1:8888/callback"
     );
   });
 }
