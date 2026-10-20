@@ -26,7 +26,7 @@ const SPOTIFY_ALBUM_URL_BASE = "https://open.spotify.com/album/";
 export const spotifyApi = new SpotifyWebApi({
   clientId: process.env.SPOTIPY_CLIENT_ID || "",
   clientSecret: process.env.SPOTIPY_CLIENT_SECRET || "",
-  redirectUri: "http://localhost:8888/callback",
+  redirectUri: "http://127.0.0.1:8888/callback",
 });
 
 const daysBetween = (date1: Date, date2: Date) =>

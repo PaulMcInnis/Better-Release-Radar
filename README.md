@@ -16,13 +16,13 @@ This project requires `Node.js` and `npm` to run. It uses TypeScript to manage t
 
 You will need to [set up authentication with Spotify](https://developer.spotify.com/documentation/general/guides/authorization-guide/) such that:
 
-- Your `REDIRECT_URI` for your [Spotify application](https://developer.spotify.com/dashboard/applications) is `http://localhost:8888/callback`
+- Your `REDIRECT_URI` for your [Spotify application](https://developer.spotify.com/dashboard/applications) is `http://127.0.0.1:8888/callback`
 - Set the following environment variables (e.g., in your `.bashrc`, `.zshrc`, or via an `.env` file):
 
   ```
   export SPOTIPY_CLIENT_ID='your-spotify-client-id'
   export SPOTIPY_CLIENT_SECRET='your-spotify-client-secret'
-  export SPOTIPY_REDIRECT_URI='http://localhost:8888/callback'
+  export SPOTIPY_REDIRECT_URI='http://127.0.0.1:8888/callback'
   ```
 
 You can always access or rotate your client ID and secret at the [developer dashboard](https://developer.spotify.com/dashboard/).

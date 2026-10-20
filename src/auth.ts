@@ -85,7 +85,7 @@ export async function authenticateSpotify(): Promise<boolean> {
 function startLocalServer() {
   const server = http.createServer(async (req, res) => {
     if (req.url && req.url.startsWith("/callback")) {
-      const url = new URL(req.url, `http://localhost:8888`);
+      const url = new URL(req.url, `http://127.0.0.1:8888`);
       const code = url.searchParams.get("code");
 
       if (code) {
@@ -108,9 +108,9 @@ function startLocalServer() {
     }
   });
 
-  server.listen(8888, () => {
+  server.listen(8888, "0.0.0.0", () => {
     logger.info(
-      "Listening for Spotify authorization code on http://localhost:8888/callback"
+      "Listening for Spotify authorization code on http://127.0.0.1:8888/callback"
     );
   });
 }
