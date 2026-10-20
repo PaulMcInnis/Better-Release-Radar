@@ -158,7 +158,7 @@
     display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
   }
   .artist:hover, .label:hover, .title:hover { text-decoration: underline; }
-  /* "(Label)" stays on one line; a long label is cut short */
+  /* The label stays on one line; a long one is cut short */
   .sub { color: var(--muted); font-size: 13px; margin-top: 1px; display: flex; white-space: nowrap; min-width: 0; }
   .sub .label { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
@@ -502,9 +502,7 @@
       label.type = "button";
       label.title = r.label + " (click to show only this label)";
       label.addEventListener("click", function () { setFocus("label", r.label, r.label); });
-      sub.appendChild(document.createTextNode("("));
       sub.appendChild(label);
-      sub.appendChild(document.createTextNode(")"));
       text.appendChild(sub);
     }
 
