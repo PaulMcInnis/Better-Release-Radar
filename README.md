@@ -10,7 +10,7 @@ No more fussing around with the `New Releases` playlist or faffing with a flakey
 
 ### Requirements
 
-This project requires `Node.js` and `npm` to run. It uses TypeScript to manage type safety.
+This project requires `Node.js` 23.6 or newer and `npm` to run. It uses TypeScript, run directly with `tsx`.
 
 ### Authentication
 

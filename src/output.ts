@@ -3,9 +3,14 @@
 import { execFileSync, spawn } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
-import { Report } from "./interfaces";
+import { fileURLToPath } from "url";
+import type { Report } from "./interfaces.ts";
 
-const templateFile = path.join(__dirname, "html", "template.html");
+const templateFile = path.join(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "html",
+  "template.html"
+);
 
 export function writeJson(report: Report, filePath: string) {
   fs.mkdirSync(path.dirname(path.resolve(filePath)), { recursive: true });

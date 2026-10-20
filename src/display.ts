@@ -1,6 +1,7 @@
+import chalk from "chalk";
 import Table from "cli-table3";
-import { Release } from "./interfaces";
-const chalk = require("chalk"); // Import chalk with CommonJS
+import type { Release } from "./interfaces.ts";
+
 
 // Function to display albums in a nice formatted table with colors
 export function displayAlbums(releases: Release[], showUrls: boolean) {

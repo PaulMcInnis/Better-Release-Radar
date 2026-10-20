@@ -1,7 +1,7 @@
-import { logger } from "./logger";
+import { logger } from "./logger.ts";
 import http from "http";
-import { saveTokensToCache, loadTokensFromCache } from "./cache";
-import { scrape, spotifyApi } from "./main";
+import { saveTokensToCache, loadTokensFromCache } from "./cache.ts";
+import { scrape, spotifyApi } from "./main.ts";
 
 // Step 1: Generate an Authorization URL
 function getAuthorizationURL() {
@@ -27,7 +27,7 @@ async function exchangeAuthorizationCode(code: string) {
     spotifyApi.setRefreshToken(refresh_token);
     saveTokensToCache(access_token, refresh_token, expires_in);
     logger.info("Access token and refresh token set.");
-  } catch (err) {
+  } catch (err: any) {
     logger.error(`Error exchanging authorization code: ${err.message}`);
   }
 }
@@ -58,7 +58,7 @@ export async function refreshAccessToken(): Promise<boolean> {
 
     logger.info("Access token has been refreshed.");
     return true;
-  } catch (err) {
+  } catch (err: any) {
     logger.error(`Error refreshing access token: ${err.message}`);
     return false;
   }

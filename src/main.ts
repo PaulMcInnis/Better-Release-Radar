@@ -1,8 +1,8 @@
 import cliProgress from "cli-progress";
 import SpotifyWebApi from "spotify-web-api-node";
-import { authenticateSpotify } from "./auth";
+import { authenticateSpotify } from "./auth.ts";
 import {
-  AlbumCache,
+  type AlbumCache,
   deleteOldCacheFiles,
   ensureCacheDirectoryExists,
   loadAlbumCache,
@@ -11,18 +11,18 @@ import {
   saveAlbumCache,
   saveArtistCache,
   saveLabelCache,
-} from "./cache";
-import { options } from "./cli";
-import { displayAlbums } from "./display";
+} from "./cache.ts";
+import { options } from "./cli.ts";
+import { displayAlbums } from "./display.ts";
 import {
   fetchAlbumLabels,
   fetchArtistAlbumsWithRetry,
   fetchFollowedArtists,
-} from "./fetch";
-import { getReleaseType, getTags, normalizeAlbumName } from "./filters";
-import { Artist, RawAlbum, Release, ReleaseTag, ReleaseType } from "./interfaces";
-import { logger } from "./logger";
-import { openInBrowser, writeHtml, writeJson } from "./output";
+} from "./fetch.ts";
+import { getReleaseType, getTags, normalizeAlbumName } from "./filters.ts";
+import type { Artist, RawAlbum, Release, ReleaseTag, ReleaseType } from "./interfaces.ts";
+import { logger } from "./logger.ts";
+import { openInBrowser, writeHtml, writeJson } from "./output.ts";
 
 // Set up Spotify API
 const SPOTIFY_ALBUM_URL_BASE = "https://open.spotify.com/album/";
@@ -35,8 +35,11 @@ export const spotifyApi = new SpotifyWebApi({
 const daysBetween = (date1: Date, date2: Date) =>
   Math.abs((+date1 - +date2) / (1000 * 60 * 60 * 24));
 
-// Save partial progress every so often, so a crash mid-run doesn't lose everything
-const ALBUM_CACHE_SAVE_INTERVAL = 50;
+// Number of artists fetched concurrently
+const ARTIST_BATCH_SIZE = 10;
+
+// Save partial progress every few batches, so a crash mid-run doesn't lose everything
+const ALBUM_CACHE_SAVE_BATCHES = 5;
 
 // Which types and tags the CLI flags hide
 function hiddenFromOptions(): { types: ReleaseType[]; tags: ReleaseTag[] } {
@@ -63,7 +66,7 @@ function toRelease(album: RawAlbum, artist: Artist): Release {
   return {
     id: album.id,
     name: album.name,
-    artist: album.artists[0], // The primary artist is the followed artist
+    artist: album.artists[0] ?? artist.name, // The primary artist is the followed artist
     artistId: artist.id,
     artists: album.artists,
     label: null, // Filled in from the label cache once all releases are known
@@ -109,11 +112,11 @@ export async function scrape() {
   }
 
   // Load cached albums if available
-  let albumCache: AlbumCache = loadAlbumCache();
-  if (albumCache) {
+  const cachedAlbums = loadAlbumCache();
+  const albumCache: AlbumCache = cachedAlbums ?? {};
+  if (cachedAlbums) {
     logger.info("Loaded albums from today's cache");
   } else {
-    albumCache = {};
     logger.info("Fetching artists' albums...");
   }
 
@@ -129,38 +132,45 @@ export async function scrape() {
   const todayDate = new Date();
   const maxAgeDays = parseInt(options.maxAgeDays, 10);
 
-  for (const [index, artist] of artists.entries()) {
-    try {
-      // Fetch albums for each artist with retry logic (auth refresh + backoff)
-      const artistAlbums = await fetchArtistAlbumsWithRetry(
-        artist.id,
-        albumCache
-      );
+  // Process artists in parallel batches to improve performance
+  for (let i = 0; i < artists.length; i += ARTIST_BATCH_SIZE) {
+    const batch = artists.slice(i, i + ARTIST_BATCH_SIZE);
 
-      for (const album of artistAlbums) {
-        const albumDate = new Date(album.release_date);
+    await Promise.all(
+      batch.map(async (artist) => {
+        try {
+          // Fetch albums for each artist with retry logic (auth refresh + backoff)
+          const artistAlbums = await fetchArtistAlbumsWithRetry(
+            artist.id,
+            albumCache
+          );
 
-        // Release date and region filter. Type and tag filters are applied per output below.
-        if (
-          daysBetween(todayDate, albumDate) <= maxAgeDays &&
-          (!options.region ||
-            (album.available_markets &&
-              album.available_markets.includes(options.region)))
-        ) {
-          releases.push(toRelease(album, artist));
+          for (const album of artistAlbums) {
+            const albumDate = new Date(album.release_date);
+
+            // Release date and region filter. Type and tag filters are applied per output below.
+            if (
+              daysBetween(todayDate, albumDate) <= maxAgeDays &&
+              (!options.region ||
+                (album.available_markets &&
+                  album.available_markets.includes(options.region)))
+            ) {
+              releases.push(toRelease(album, artist));
+            }
+          }
+        } catch (err: any) {
+          failedArtists.push(artist);
+          logger.debug(
+            `Error fetching albums for artist ${artist.name} (${artist.id}): ${err.message}`
+          );
         }
-      }
-    } catch (err) {
-      failedArtists.push(artist);
-      logger.debug(
-        `Error fetching albums for artist ${artist.name} (${artist.id}): ${err.message}`
-      );
-    }
 
-    // Increment the progress bar after processing each artist
-    overallProgressBar.increment();
+        // Increment the progress bar after processing each artist
+        overallProgressBar.increment();
+      })
+    );
 
-    if ((index + 1) % ALBUM_CACHE_SAVE_INTERVAL === 0) {
+    if ((i / ARTIST_BATCH_SIZE + 1) % ALBUM_CACHE_SAVE_BATCHES === 0) {
       saveAlbumCache(albumCache);
     }
   }

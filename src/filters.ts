@@ -1,4 +1,4 @@
-import { RawAlbum, ReleaseTag, ReleaseType } from "./interfaces";
+import type { RawAlbum, ReleaseTag, ReleaseType } from "./interfaces.ts";
 
 // Define regular expressions to filter out re-releases
 const reReleasePatterns = [

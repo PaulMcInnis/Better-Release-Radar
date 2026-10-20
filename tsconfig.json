@@ -1,10 +1,26 @@
 {
     "compilerOptions": {
-        "module": "CommonJS", // Use CommonJS
-        "target": "ES2020", // Keep modern JavaScript target
-        "moduleResolution": "node", // Use Node.js module resolution
+        /* Base Options: */
         "esModuleInterop": true,
         "skipLibCheck": true,
-        "resolveJsonModule": true
+        "target": "es2022",
+        "allowJs": true,
+        "resolveJsonModule": true,
+        "moduleDetection": "force",
+        "isolatedModules": true,
+        "verbatimModuleSyntax": true,
+        /* Strictness */
+        "strict": true,
+        "noUncheckedIndexedAccess": true,
+        "noImplicitOverride": true,
+        /* Node Stuff */
+        "allowImportingTsExtensions": true,
+        "rewriteRelativeImportExtensions": true,
+        "module": "NodeNext",
+        "noEmit": true,
+        /* If your code doesn't run in the DOM: */
+        "lib": [
+            "es2022"
+        ],
     }
 }

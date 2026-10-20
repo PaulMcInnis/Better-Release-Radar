@@ -1,8 +1,8 @@
-import { refreshAccessToken } from "./auth";
-import { AlbumCache, LabelCache } from "./cache";
-import { Artist, RawAlbum } from "./interfaces";
-import { logger } from "./logger";
-import { spotifyApi } from "./main";
+import { refreshAccessToken } from "./auth.ts";
+import type { AlbumCache, LabelCache } from "./cache.ts";
+import type { Artist, RawAlbum } from "./interfaces.ts";
+import { logger } from "./logger.ts";
+import { spotifyApi } from "./main.ts";
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -44,7 +44,7 @@ export async function fetchFollowedArtists(): Promise<Artist[]> {
     } while (after); // Continue until no more pages
 
     return artists;
-  } catch (err) {
+  } catch (err: any) {
     logger.error(`Error fetching followed artists: ${err.message}`);
     throw err;
   }
@@ -75,7 +75,7 @@ export async function fetchArtistAlbums(
       include_groups: "album,single,compilation",
     });
     const fetchedAlbums: RawAlbum[] = response.body.items
-      .filter((album) => album.artists[0].id === artistId) // Ensure the followed artist is the primary artist
+      .filter((album) => album.artists[0]?.id === artistId) // Ensure the followed artist is the primary artist
       .map((album) => ({
         name: album.name,
         release_date: album.release_date,
@@ -86,7 +86,11 @@ export async function fetchArtistAlbums(
         total_tracks: album.total_tracks,
         available_markets: album.available_markets,
         artists: album.artists.map((artist) => artist.name), // Extract artist names
-        images: album.images,
+        images: album.images.map((image) => ({
+          url: image.url,
+          width: image.width ?? null,
+          height: image.height ?? null,
+        })),
       }));
 
     albums = albums.concat(fetchedAlbums); // Append the newly fetched albums to the result
@@ -111,7 +115,7 @@ async function withRetry<T>(
   while (true) {
     try {
       return await request();
-    } catch (err) {
+    } catch (err: any) {
       if (err.statusCode === 401 && !refreshedToken) {
         // If it's an authentication issue (token expired), refresh the token once and retry immediately
         logger.info("Access token expired. Refreshing token...");
@@ -134,7 +138,7 @@ async function withRetry<T>(
           : backoffDelay;
       logger.debug(
         `${description} failed (${
-          err.statusCode ?? err.message
+          err.statusCode || err.code || err.message || err.name || "unknown error"
         }), retrying after ${delay / 1000} seconds... (${retries} retries left)`
       );
       await sleep(delay);
@@ -166,10 +170,10 @@ export async function fetchAlbumLabels(
       const response = await withRetry("Fetching album labels", () =>
         spotifyApi.getAlbums(batch)
       );
-      response.body.albums.forEach((album, index) => {
-        labelCache[batch[index]] = album?.label?.trim() || null;
+      batch.forEach((id, index) => {
+        labelCache[id] = response.body.albums[index]?.label?.trim() || null;
       });
-    } catch (err) {
+    } catch (err: any) {
       // Labels are a nice-to-have; leave these uncached so the next run tries again
       logger.warn(`Couldn't fetch labels for ${batch.length} albums: ${err.message}`);
     }

@@ -1,5 +1,5 @@
 import winston from "winston";
-import { options } from "./cli";
+import { options } from "./cli.ts";
 
 export const logger = winston.createLogger({
   level: options.logLevel,

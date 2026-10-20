@@ -1,8 +1,8 @@
 // Rebuild the HTML page from a JSON file written by --json, without fetching from Spotify again.
 // Usage: npm run html -- <releases.json> [releases.html] [--open]
 import * as fs from "fs";
-import { Report } from "./interfaces";
-import { openInBrowser, writeHtml } from "./output";
+import type { Report } from "./interfaces.ts";
+import { openInBrowser, writeHtml } from "./output.ts";
 
 const args = process.argv.slice(2);
 const open = args.includes("--open");
