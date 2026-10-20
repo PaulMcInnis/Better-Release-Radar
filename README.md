@@ -93,7 +93,7 @@ The HTML page is a single self-contained file showing every release with its cov
 - filter by type (Album, EP, Single, Compilation) and by tag (Re-release, Live, Soundtrack, Remix)
 - narrow to the past week, month, 3 or 6 months
 - sort by newest, oldest, artist, title or label; date sorts are grouped by month
-- each release shows the artist in bold, the title in italics, then (label, release date)
+- each release shows the artist in bold, the title in italics, then (label); hover for the release date
 - switch between a grid of covers and a compact list
 - click any release to open it in the Spotify app, or switch to the web player
 
