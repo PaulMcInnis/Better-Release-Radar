@@ -21,6 +21,13 @@ program
   .option("--hide-soundtracks", "Hide soundtracks", false)
   .option("--hide-remixes", "Hide remixes", false)
   .option("--log-filtered", "Log filtered albums", false)
+  .option(
+    "--json <path>",
+    "Write all releases to a JSON file (hidden ones included, tagged)"
+  )
+  .option("--html <path>", "Write an interactive HTML page of the releases")
+  .option("--open", "Open the HTML page in your browser when done", false)
+  .option("--no-table", "Don't print the table to the console")
   .parse(process.argv);
 
 export const options = program.opts();

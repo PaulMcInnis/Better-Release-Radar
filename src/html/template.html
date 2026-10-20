@@ -1,0 +1,539 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Release Radar</title>
+<style>
+  :root {
+    --bg: #f6f6f4;
+    --surface: #ffffff;
+    --surface-2: #ececea;
+    --text: #18181a;
+    --muted: #6b6b70;
+    --border: #dcdcd8;
+    --accent: #13a150;
+    --accent-text: #ffffff;
+    --chip-off: #9a9aa0;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.06), 0 4px 14px rgba(0, 0, 0, 0.06);
+    --tag-re-release: #b45309;
+    --tag-live: #be123c;
+    --tag-soundtrack: #6d28d9;
+    --tag-remix: #0369a1;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #111113;
+      --surface: #1b1b1e;
+      --surface-2: #26262a;
+      --text: #ededef;
+      --muted: #9a9aa2;
+      --border: #2e2e33;
+      --accent: #1ed760;
+      --accent-text: #08130c;
+      --chip-off: #6a6a72;
+      --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 6px 18px rgba(0, 0, 0, 0.35);
+      --tag-re-release: #f59e0b;
+      --tag-live: #fb7185;
+      --tag-soundtrack: #a78bfa;
+      --tag-remix: #38bdf8;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #111113;
+    --surface: #1b1b1e;
+    --surface-2: #26262a;
+    --text: #ededef;
+    --muted: #9a9aa2;
+    --border: #2e2e33;
+    --accent: #1ed760;
+    --accent-text: #08130c;
+    --chip-off: #6a6a72;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 6px 18px rgba(0, 0, 0, 0.35);
+    --tag-re-release: #f59e0b;
+    --tag-live: #fb7185;
+    --tag-soundtrack: #a78bfa;
+    --tag-remix: #38bdf8;
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  }
+  button, input, select { font: inherit; color: inherit; }
+  .wrap { max-width: 1400px; margin: 0 auto; padding: 0 16px; }
+
+  header.page { padding-top: 28px; padding-bottom: 8px; }
+  header.page h1 { margin: 0; font-size: 28px; letter-spacing: -0.02em; }
+  header.page .meta { margin: 4px 0 0; color: var(--muted); }
+
+  .toolbar {
+    position: sticky; top: 0; z-index: 10;
+    background: color-mix(in srgb, var(--bg) 88%, transparent);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--border);
+    padding: 12px 0;
+  }
+  .toolbar .wrap { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; }
+  .search {
+    flex: 1 1 240px; min-width: 0;
+    padding: 8px 12px; border-radius: 10px;
+    border: 1px solid var(--border); background: var(--surface);
+  }
+  .search:focus, select:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .group { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+  .group-label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; margin-right: 2px; }
+  .chip {
+    border: 1px solid var(--border); background: var(--surface);
+    padding: 4px 10px; border-radius: 999px; cursor: pointer;
+    display: inline-flex; gap: 6px; align-items: center; font-size: 13px;
+  }
+  .chip .n { color: var(--muted); font-variant-numeric: tabular-nums; }
+  .chip[aria-pressed="true"] { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+  .chip[aria-pressed="true"] .n { color: inherit; opacity: 0.75; }
+  .chip[aria-pressed="false"] { color: var(--chip-off); text-decoration: line-through; }
+  select {
+    padding: 6px 8px; border-radius: 10px;
+    border: 1px solid var(--border); background: var(--surface);
+  }
+  .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+  .seg button { border: 0; background: var(--surface); padding: 6px 10px; cursor: pointer; font-size: 13px; }
+  .seg button + button { border-left: 1px solid var(--border); }
+  .seg button[aria-pressed="true"] { background: var(--surface-2); font-weight: 600; }
+  .linkish { background: none; border: 0; color: var(--muted); cursor: pointer; text-decoration: underline; padding: 4px; font-size: 13px; }
+
+  .status { color: var(--muted); margin: 14px 0 4px; font-size: 14px; }
+
+  section.month h2 {
+    font-size: 15px; margin: 26px 0 12px; display: flex; gap: 8px; align-items: baseline;
+  }
+  section.month h2 .n { color: var(--muted); font-weight: 400; font-size: 13px; }
+
+  .grid { display: grid; gap: 18px; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); }
+  .card { position: relative; min-width: 0; }
+  .card a.open { color: inherit; text-decoration: none; display: block; border-radius: 10px; }
+  .cover {
+    position: relative; aspect-ratio: 1; border-radius: 10px; overflow: hidden;
+    background: var(--surface-2); box-shadow: var(--shadow);
+  }
+  .cover img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform 0.2s ease; }
+  .card a.open:hover .cover img { transform: scale(1.04); }
+  .cover .placeholder {
+    position: absolute; inset: 0; display: grid; place-items: center;
+    font-size: 44px; font-weight: 700; color: rgba(255, 255, 255, 0.9);
+  }
+  .play {
+    position: absolute; right: 8px; bottom: 8px; width: 40px; height: 40px; border-radius: 50%;
+    background: var(--accent); color: var(--accent-text); display: grid; place-items: center;
+    opacity: 0; transform: translateY(6px); transition: opacity 0.15s ease, transform 0.15s ease;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+  }
+  .card a.open:hover .play, .card a.open:focus-visible .play { opacity: 1; transform: none; }
+  .badge {
+    position: absolute; left: 8px; top: 8px; padding: 2px 7px; border-radius: 6px;
+    background: rgba(0, 0, 0, 0.62); color: #fff; font-size: 11px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.05em;
+  }
+  .badge.new { left: auto; right: 8px; background: var(--accent); color: var(--accent-text); }
+  .title { font-weight: 600; margin-top: 8px; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+  .artist {
+    background: none; border: 0; padding: 0; cursor: pointer; color: var(--muted);
+    text-align: left; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block;
+  }
+  .artist:hover { color: var(--text); text-decoration: underline; }
+  .sub { color: var(--muted); font-size: 12px; margin-top: 2px; font-variant-numeric: tabular-nums; }
+  .tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
+  .tag { font-size: 11px; padding: 0 6px; border-radius: 5px; border: 1px solid currentColor; line-height: 17px; }
+  .tag.re-release { color: var(--tag-re-release); }
+  .tag.live { color: var(--tag-live); }
+  .tag.soundtrack { color: var(--tag-soundtrack); }
+  .tag.remix { color: var(--tag-remix); }
+
+  /* List view */
+  .list .grid { grid-template-columns: 1fr; gap: 2px; }
+  .list .card {
+    display: grid; grid-template-columns: 52px minmax(0, 1fr) auto; gap: 4px 14px; align-items: center;
+    padding: 6px; border-radius: 10px;
+  }
+  .list .card:hover { background: var(--surface); }
+  .list .card a.open { display: contents; }
+  .list .cover { width: 52px; border-radius: 6px; box-shadow: none; grid-column: 1; grid-row: 1 / span 2; }
+  .list .cover .placeholder { font-size: 20px; }
+  .list .badge, .list .play { display: none; }
+  .list .title { margin: 0; -webkit-line-clamp: 1; grid-column: 2; grid-row: 1; }
+  .list .meta-col { grid-column: 2; grid-row: 2; display: flex; gap: 10px; min-width: 0; align-items: baseline; }
+  .list .artist { flex: 0 1 auto; }
+  .list .sub { margin: 0; white-space: nowrap; }
+  .list .tags { margin: 0; flex-wrap: nowrap; }
+  .list .type-col { grid-column: 3; grid-row: 1 / span 2; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; }
+  .grid-view .type-col { display: none; }
+
+  .empty { text-align: center; color: var(--muted); padding: 60px 0; }
+  footer { color: var(--muted); font-size: 12px; padding: 40px 0 30px; }
+
+  @media (max-width: 600px) {
+    header.page h1 { font-size: 22px; }
+    .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+    .toolbar { position: static; }
+    .list .sub { display: none; }
+  }
+</style>
+</head>
+<body>
+  <header class="page wrap">
+    <h1>Release Radar</h1>
+    <p class="meta" id="meta"></p>
+  </header>
+
+  <div class="toolbar">
+    <div class="wrap">
+      <input class="search" id="search" type="search" placeholder="Search artists and titles  ( / )" aria-label="Search artists and titles">
+      <div class="group" id="types"><span class="group-label">Type</span></div>
+      <div class="group" id="tags"><span class="group-label">Include</span></div>
+      <div class="group">
+        <select id="period" aria-label="Released within">
+          <option value="0">Any time</option>
+          <option value="7">Past week</option>
+          <option value="30">Past month</option>
+          <option value="90">Past 3 months</option>
+          <option value="180">Past 6 months</option>
+        </select>
+        <select id="sort" aria-label="Sort by">
+          <option value="newest">Newest first</option>
+          <option value="oldest">Oldest first</option>
+          <option value="artist">Artist A–Z</option>
+          <option value="title">Title A–Z</option>
+          <option value="tracks">Most tracks</option>
+        </select>
+      </div>
+      <div class="group">
+        <div class="seg" id="view" role="group" aria-label="Layout">
+          <button type="button" data-value="grid">Grid</button>
+          <button type="button" data-value="list">List</button>
+        </div>
+        <div class="seg" id="openin" role="group" aria-label="Open releases in">
+          <button type="button" data-value="app" title="Open in the Spotify app">App</button>
+          <button type="button" data-value="web" title="Open in the Spotify web player">Web</button>
+        </div>
+        <button type="button" class="linkish" id="reset">Reset filters</button>
+      </div>
+    </div>
+  </div>
+
+  <main class="wrap">
+    <p class="status" id="status" aria-live="polite"></p>
+    <div id="results"></div>
+  </main>
+
+  <footer class="wrap" id="footer"></footer>
+
+<script type="application/json" id="report">__REPORT_JSON__</script>
+<script>
+(function () {
+  "use strict";
+
+  var report = JSON.parse(document.getElementById("report").textContent);
+  var releases = report.releases;
+
+  var TYPES = [
+    { id: "album", label: "Album" },
+    { id: "ep", label: "EP" },
+    { id: "single", label: "Single" },
+    { id: "compilation", label: "Compilation" }
+  ];
+  var TAGS = [
+    { id: "re-release", label: "Re-releases" },
+    { id: "live", label: "Live" },
+    { id: "soundtrack", label: "Soundtracks" },
+    { id: "remix", label: "Remixes" }
+  ];
+  var TYPE_LABELS = { album: "Album", ep: "EP", single: "Single", compilation: "Compilation" };
+  var TAG_LABELS = { "re-release": "Re-release", live: "Live", soundtrack: "Soundtrack", remix: "Remix" };
+  var NEW_DAYS = 7;
+  var DAY = 86400000;
+
+  // Small per-viewer preferences; the page works the same without storage
+  var PREFS_KEY = "release-radar-prefs";
+  function loadPrefs() {
+    try { return JSON.parse(localStorage.getItem(PREFS_KEY)) || {}; } catch (e) { return {}; }
+  }
+  function savePrefs() {
+    try {
+      localStorage.setItem(PREFS_KEY, JSON.stringify({ view: state.view, openIn: state.openIn, sort: state.sort }));
+    } catch (e) { /* storage unavailable */ }
+  }
+
+  function defaultFilters() {
+    return {
+      query: "",
+      period: 0,
+      types: new Set(TYPES.map(function (t) { return t.id; }).filter(function (id) { return report.hidden.types.indexOf(id) === -1; })),
+      tags: new Set(TAGS.map(function (t) { return t.id; }).filter(function (id) { return report.hidden.tags.indexOf(id) === -1; }))
+    };
+  }
+
+  var prefs = loadPrefs();
+  var state = Object.assign(defaultFilters(), {
+    sort: prefs.sort || "newest",
+    view: prefs.view || "grid",
+    openIn: prefs.openIn || "app"
+  });
+
+  // Dates: "2026-10-17", "2026-10" or "2026", parsed as local dates so they don't shift a day
+  function parseDate(s) {
+    var p = s.split("-").map(Number);
+    return new Date(p[0], (p[1] || 1) - 1, p[2] || 1);
+  }
+  var generatedAt = new Date(report.generatedAt);
+  releases.forEach(function (r) {
+    r._date = parseDate(r.releaseDate);
+    r._age = (generatedAt - r._date) / DAY;
+    r._search = (r.name + " " + r.artists.join(" ")).toLowerCase();
+  });
+
+  function formatDate(r) {
+    var parts = r.releaseDate.split("-").length;
+    if (parts === 1) return r.releaseDate;
+    var opts = parts === 2 ? { month: "short", year: "numeric" } : { month: "short", day: "numeric", year: "numeric" };
+    return r._date.toLocaleDateString(undefined, opts);
+  }
+
+  // Header
+  document.getElementById("meta").textContent = [
+    releases.length + " releases",
+    report.artistCount + " followed artists",
+    "past " + report.maxAgeDays + " days",
+    report.region ? "region " + report.region : null,
+    "generated " + generatedAt.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })
+  ].filter(Boolean).join(" · ");
+  document.getElementById("footer").textContent =
+    "Built by Better Release Radar. Clicking a release opens it in Spotify; switch between the app and the web player in the toolbar.";
+
+  // Filter chips
+  function makeChips(containerId, items, set, countOf) {
+    var container = document.getElementById(containerId);
+    items.forEach(function (item) {
+      var count = countOf(item.id);
+      if (!count) return;
+      var b = document.createElement("button");
+      b.type = "button";
+      b.className = "chip";
+      b.dataset.value = item.id;
+      b.innerHTML = '<span></span><span class="n"></span>';
+      b.firstChild.textContent = item.label;
+      b.lastChild.textContent = count;
+      b.addEventListener("click", function () {
+        if (set().has(item.id)) set().delete(item.id); else set().add(item.id);
+        render();
+      });
+      container.appendChild(b);
+    });
+  }
+  makeChips("types", TYPES, function () { return state.types; }, function (id) {
+    return releases.filter(function (r) { return r.type === id; }).length;
+  });
+  makeChips("tags", TAGS, function () { return state.tags; }, function (id) {
+    return releases.filter(function (r) { return r.tags.indexOf(id) !== -1; }).length;
+  });
+  if (!document.querySelector("#tags .chip")) document.getElementById("tags").hidden = true;
+
+  // Controls
+  var search = document.getElementById("search");
+  var period = document.getElementById("period");
+  var sort = document.getElementById("sort");
+  // Hide period options that don't narrow anything
+  Array.prototype.forEach.call(period.options, function (o) {
+    if (+o.value && +o.value >= report.maxAgeDays) o.remove();
+  });
+
+  var searchTimer;
+  search.addEventListener("input", function () {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(function () { state.query = search.value.trim().toLowerCase(); render(); }, 120);
+  });
+  period.addEventListener("change", function () { state.period = +period.value; render(); });
+  sort.addEventListener("change", function () { state.sort = sort.value; savePrefs(); render(); });
+  function bindSeg(id, key) {
+    document.querySelectorAll("#" + id + " button").forEach(function (b) {
+      b.addEventListener("click", function () { state[key] = b.dataset.value; savePrefs(); render(); });
+    });
+  }
+  bindSeg("view", "view");
+  bindSeg("openin", "openIn");
+  document.getElementById("reset").addEventListener("click", function () {
+    Object.assign(state, defaultFilters());
+    search.value = "";
+    render();
+  });
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "/" && document.activeElement !== search) { e.preventDefault(); search.focus(); }
+    if (e.key === "Escape" && document.activeElement === search && search.value) {
+      search.value = ""; state.query = ""; render();
+    }
+  });
+
+  // Clicking an artist name narrows the list to that artist
+  function filterToArtist(name) {
+    search.value = name;
+    state.query = name.toLowerCase();
+    render();
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function visible(r) {
+    if (!state.types.has(r.type)) return false;
+    for (var i = 0; i < r.tags.length; i++) if (!state.tags.has(r.tags[i])) return false;
+    if (state.period && r._age > state.period) return false;
+    if (state.query && r._search.indexOf(state.query) === -1) return false;
+    return true;
+  }
+
+  var collator = new Intl.Collator(undefined, { sensitivity: "base", numeric: true });
+  var sorters = {
+    newest: function (a, b) { return b._date - a._date || collator.compare(a.artist, b.artist); },
+    oldest: function (a, b) { return a._date - b._date || collator.compare(a.artist, b.artist); },
+    artist: function (a, b) { return collator.compare(a.artist, b.artist) || b._date - a._date; },
+    title: function (a, b) { return collator.compare(a.name, b.name); },
+    tracks: function (a, b) { return (b.totalTracks || 0) - (a.totalTracks || 0) || b._date - a._date; }
+  };
+
+  // Stable colour from an id, for covers that have no image
+  function hue(id) {
+    var h = 0;
+    for (var i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) % 360;
+    return h;
+  }
+
+  function placeholder(r) {
+    var p = document.createElement("div");
+    p.className = "placeholder";
+    var h = hue(r.id);
+    p.style.background = "linear-gradient(135deg, hsl(" + h + " 45% 42%), hsl(" + ((h + 50) % 360) + " 50% 28%))";
+    p.textContent = (r.name.trim()[0] || "?").toUpperCase();
+    return p;
+  }
+
+  function el(tag, cls, text) {
+    var e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text != null) e.textContent = text;
+    return e;
+  }
+
+  function card(r) {
+    var c = el("article", "card");
+
+    var a = el("a", "open");
+    a.href = state.openIn === "app" ? r.uri : r.url;
+    if (state.openIn === "web") { a.target = "_blank"; a.rel = "noopener"; }
+    a.title = r.name + " — " + r.artists.join(", ");
+
+    var cover = el("div", "cover");
+    var src = state.view === "list" ? (r.thumbnail || r.image) : (r.image || r.thumbnail);
+    if (src) {
+      var img = el("img");
+      img.loading = "lazy";
+      img.decoding = "async";
+      img.alt = "";
+      img.src = src;
+      img.addEventListener("error", function () { img.replaceWith(placeholder(r)); });
+      cover.appendChild(img);
+    } else {
+      cover.appendChild(placeholder(r));
+    }
+    if (r.type !== "album") cover.appendChild(el("span", "badge", TYPE_LABELS[r.type]));
+    if (r._age >= 0 && r._age < NEW_DAYS) cover.appendChild(el("span", "badge new", "New"));
+    var play = el("span", "play");
+    play.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2.5v11l9.5-5.5z" fill="currentColor"/></svg>';
+    cover.appendChild(play);
+    a.appendChild(cover);
+    a.appendChild(el("div", "title", r.name));
+    c.appendChild(a);
+
+    var meta = el("div", "meta-col");
+    var artist = el("button", "artist", r.artists.join(", "));
+    artist.type = "button";
+    artist.title = "Show only " + r.artist;
+    artist.addEventListener("click", function () { filterToArtist(r.artist); });
+    meta.appendChild(artist);
+    var sub = formatDate(r);
+    if (r.totalTracks) sub += " · " + r.totalTracks + (r.totalTracks === 1 ? " track" : " tracks");
+    meta.appendChild(el("div", "sub", sub));
+    if (r.tags.length) {
+      var tags = el("div", "tags");
+      r.tags.forEach(function (t) { tags.appendChild(el("span", "tag " + t, TAG_LABELS[t])); });
+      meta.appendChild(tags);
+    }
+    c.appendChild(meta);
+    c.appendChild(el("div", "type-col", TYPE_LABELS[r.type]));
+    return c;
+  }
+
+  function monthKey(d) { return d.getFullYear() * 12 + d.getMonth(); }
+
+  function render() {
+    // Sync controls with state
+    document.querySelectorAll("#types .chip").forEach(function (b) { b.setAttribute("aria-pressed", state.types.has(b.dataset.value)); });
+    document.querySelectorAll("#tags .chip").forEach(function (b) { b.setAttribute("aria-pressed", state.tags.has(b.dataset.value)); });
+    document.querySelectorAll("#view button").forEach(function (b) { b.setAttribute("aria-pressed", b.dataset.value === state.view); });
+    document.querySelectorAll("#openin button").forEach(function (b) { b.setAttribute("aria-pressed", b.dataset.value === state.openIn); });
+    sort.value = state.sort;
+    period.value = String(state.period);
+
+    var list = releases.filter(visible).sort(sorters[state.sort]);
+    var results = document.getElementById("results");
+    results.className = state.view === "list" ? "list" : "grid-view";
+    results.textContent = "";
+
+    document.getElementById("status").textContent = list.length === releases.length
+      ? "Showing all " + releases.length + " releases"
+      : "Showing " + list.length + " of " + releases.length + " releases";
+
+    if (!list.length) {
+      results.appendChild(el("p", "empty", "No releases match these filters."));
+      return;
+    }
+
+    var frag = document.createDocumentFragment();
+    if (state.sort === "newest" || state.sort === "oldest") {
+      // Group by month when sorted by date
+      var section, grid, count, currentKey = null;
+      list.forEach(function (r) {
+        var key = monthKey(r._date);
+        if (key !== currentKey) {
+          currentKey = key;
+          section = el("section", "month");
+          var h = el("h2", null, r._date.toLocaleDateString(undefined, { month: "long", year: "numeric" }));
+          count = el("span", "n");
+          h.appendChild(count);
+          section.appendChild(h);
+          grid = el("div", "grid");
+          section.appendChild(grid);
+          frag.appendChild(section);
+          count._n = 0;
+        }
+        grid.appendChild(card(r));
+        count._n++;
+        count.textContent = count._n;
+      });
+    } else {
+      var g = el("div", "grid");
+      list.forEach(function (r) { g.appendChild(card(r)); });
+      frag.appendChild(g);
+    }
+    results.appendChild(frag);
+  }
+
+  render();
+})();
+</script>
+</body>
+</html>

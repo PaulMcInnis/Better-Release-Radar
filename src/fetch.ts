@@ -1,8 +1,10 @@
 import { refreshAccessToken } from "./auth";
-import { saveAlbumCache } from "./cache";
+import { AlbumCache } from "./cache";
 import { Artist, RawAlbum } from "./interfaces";
 import { logger } from "./logger";
 import { spotifyApi } from "./main";
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // Function to fetch followed artists with a progress bar
 export async function fetchFollowedArtists(): Promise<Artist[]> {
@@ -43,7 +45,7 @@ export async function fetchFollowedArtists(): Promise<Artist[]> {
 
     return artists;
   } catch (err) {
-    logger.error("Error fetching followed artists:", err);
+    logger.error(`Error fetching followed artists: ${err.message}`);
     throw err;
   }
 }
@@ -51,7 +53,7 @@ export async function fetchFollowedArtists(): Promise<Artist[]> {
 // Fetch artist albums with cache support
 export async function fetchArtistAlbums(
   artistId: string,
-  cache: { [artistId: string]: RawAlbum[] }
+  cache: AlbumCache
 ): Promise<RawAlbum[]> {
   if (cache[artistId]) {
     // Use cached albums if available
@@ -63,77 +65,81 @@ export async function fetchArtistAlbums(
   let offset = 0;
   const limit = 50; // Spotify API allows a maximum of 50 items per request
 
-  try {
-    let response;
-    do {
-      // Fetch albums in batches using the offset for pagination
-      response = await spotifyApi.getArtistAlbums(artistId, { limit, offset });
-      const fetchedAlbums = response.body.items
-        .filter((album) => album.artists[0].id === artistId) // Ensure the followed artist is the primary artist
-        .map((album) => ({
-          name: album.name,
-          release_date: album.release_date,
-          uri: album.uri,
-          id: album.id,
-          album_type: album.album_type,
-          available_markets: album.available_markets,
-          artists: album.artists.map((artist) => artist.name), // Extract artist names
-        }));
+  let response;
+  do {
+    // Fetch albums in batches using the offset for pagination.
+    // Skip "appears_on", which is never the followed artist's own release.
+    response = await spotifyApi.getArtistAlbums(artistId, {
+      limit,
+      offset,
+      include_groups: "album,single,compilation",
+    });
+    const fetchedAlbums: RawAlbum[] = response.body.items
+      .filter((album) => album.artists[0].id === artistId) // Ensure the followed artist is the primary artist
+      .map((album) => ({
+        name: album.name,
+        release_date: album.release_date,
+        release_date_precision: album.release_date_precision,
+        uri: album.uri,
+        id: album.id,
+        album_type: album.album_type,
+        total_tracks: album.total_tracks,
+        available_markets: album.available_markets,
+        artists: album.artists.map((artist) => artist.name), // Extract artist names
+        images: album.images,
+      }));
 
-      albums = albums.concat(fetchedAlbums); // Append the newly fetched albums to the result
-      offset += limit; // Move the offset for the next batch
-    } while (response.body.items.length === limit); // Continue while we still get a full batch of results
+    albums = albums.concat(fetchedAlbums); // Append the newly fetched albums to the result
+    offset += limit; // Move the offset for the next batch
+  } while (response.body.next); // Continue while Spotify reports another page
 
-    // Cache the albums for this artist
-    cache[artistId] = albums;
-    saveAlbumCache(cache); // Save the updated cache to disk
+  // Cache the albums for this artist
+  cache[artistId] = albums;
 
-    return albums;
-  } catch (err) {
-    logger.error(`Error fetching albums for artist ${artistId}`, err);
-    throw err;
-  }
+  return albums;
 }
 
 // Retry mechanism with token refresh for auth issues and exponential backoff for other errors
 export async function fetchArtistAlbumsWithRetry(
   artistId: string,
-  cache: { [artistId: string]: RawAlbum[] }
+  cache: AlbumCache
 ): Promise<RawAlbum[]> {
-  let retries = 3; // Max number of retries for non-auth errors
-  let backoffDelay = 500; // Initial backoff delay in milliseconds
+  let retries = 5; // Max number of attempts for non-auth errors
+  let backoffDelay = 1000; // Initial backoff delay in milliseconds
+  let refreshedToken = false;
 
-  while (retries > 0) {
+  while (true) {
     try {
       // Try fetching artist albums
       return await fetchArtistAlbums(artistId, cache);
     } catch (err) {
-      if (
-        err.body &&
-        err.body.error &&
-        err.body.error.status === 401 &&
-        err.body.error.message === "The access token expired"
-      ) {
-        // If it's an authentication issue (token expired), refresh the token and retry immediately
+      if (err.statusCode === 401 && !refreshedToken) {
+        // If it's an authentication issue (token expired), refresh the token once and retry immediately
         logger.info("Access token expired. Refreshing token...");
+        refreshedToken = true;
         await refreshAccessToken();
         continue; // Retry immediately after refreshing token (no backoff needed)
-      } else {
-        // For non-authentication errors, apply exponential backoff
-        retries -= 1;
-        if (retries > 0) {
-          logger.info(
-            `Error occurred, retrying after ${
-              backoffDelay / 1000
-            } seconds... (${retries} retries left)`
-          );
-          await new Promise((resolve) => setTimeout(resolve, backoffDelay)); // Wait for backoff period
-          backoffDelay *= 2; // Exponential backoff (double the delay)
-        } else {
-          // If out of retries, rethrow the error
-          throw err;
-        }
       }
+
+      retries -= 1;
+      if (retries <= 0) {
+        // If out of retries, rethrow the error
+        throw err;
+      }
+
+      // Rate limited: Spotify says how long to wait. Otherwise use exponential backoff.
+      const retryAfterSeconds = Number(err.headers?.["retry-after"]);
+      const delay =
+        err.statusCode === 429 && retryAfterSeconds > 0
+          ? retryAfterSeconds * 1000
+          : backoffDelay;
+      logger.debug(
+        `Fetching albums for artist ${artistId} failed (${
+          err.statusCode ?? err.message
+        }), retrying after ${delay / 1000} seconds... (${retries} retries left)`
+      );
+      await sleep(delay);
+      backoffDelay *= 2; // Exponential backoff (double the delay)
     }
   }
 }

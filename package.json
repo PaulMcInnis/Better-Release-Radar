@@ -3,7 +3,9 @@
   "version": "2.3.0",
   "type": "commonjs",
   "scripts": {
-    "start": "NODE_OPTIONS='--no-warnings' ts-node ./src/main.ts"
+    "start": "NODE_OPTIONS='--no-warnings' ts-node ./src/main.ts",
+    "html": "NODE_OPTIONS='--no-warnings' ts-node ./src/build-html.ts",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@types/spotify-web-api-node": "^5.0.11",
